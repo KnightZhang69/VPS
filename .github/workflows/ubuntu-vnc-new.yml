@@ -50,11 +50,11 @@ jobs:
           vncserver :0 -localhost no -geometry 1280x800 -depth 24 -SecurityTypes VncAuth -xstartup ~/.vnc/xstartup
 
       - name: Start Ngrok tunnel (optional)
-        if: ${{ secrets.NGROK_AUTH_TOKEN != '' }}
         env:
-          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+          NGROK_AUTH_TOKEN_CHECK: ${{ secrets.NGROK_AUTH_TOKEN }}
+        if: ${{ env.NGROK_AUTH_TOKEN_CHECK != '' }}
         run: |
-          ngrok authtoken $NGROK_AUTH_TOKEN
+          ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
           ngrok tcp 5900 &
           for i in {1..10}; do
             TUNNEL_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
