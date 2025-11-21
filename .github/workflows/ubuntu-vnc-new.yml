@@ -49,7 +49,28 @@ jobs:
           EOF
           chmod +x ~/.vnc/xstartup
           vncserver -kill :0 || true
-          vncserver :0 -geometry 1280x1024 -depth 24 -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd
+          vncserver :0 -geometry 1280x1024 -depth 24 -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd -localhost no
+
+      - name: Install Tailscale (optional)
+        if: ${{ secrets.TAILSCALE_AUTH_KEY != '' }}
+        run: curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Start tailscaled (optional)
+        if: ${{ secrets.TAILSCALE_AUTH_KEY != '' }}
+        run: |
+          sudo mkdir -p /var/run
+          sudo nohup tailscaled >/tmp/tailscaled.log 2>&1 &
+          sleep 3
+
+      - name: Connect to Tailscale (optional)
+        if: ${{ secrets.TAILSCALE_AUTH_KEY != '' }}
+        run: |
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${GITHUB_RUN_ID}
+          echo "TAILSCALE_IP=$(tailscale ip -4)" >> "$GITHUB_ENV"
+
+      - name: Verify Tailscale VNC (optional)
+        if: ${{ env.TAILSCALE_IP != '' }}
+        run: nc -vz "$TAILSCALE_IP" 5900
 
       - name: Start Ngrok tunnel (optional)
         env:
@@ -64,10 +85,23 @@ jobs:
             TUNNEL_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
             if [ -n "$TUNNEL_URL" ] && [ "$TUNNEL_URL" != "null" ]; then
               echo $TUNNEL_URL > ngrok.txt
+              echo "NGROK_TUNNEL=$TUNNEL_URL" >> "$GITHUB_ENV"
               break
             fi
             sleep 2
           done
+
+      - name: Check Ngrok tunnel reachability (optional)
+        if: ${{ env.NGROK_TUNNEL != '' }}
+        run: |
+          HOSTPORT=${NGROK_TUNNEL#tcp://}
+          HOST=${HOSTPORT%:*}
+          PORT=${HOSTPORT##*:}
+          if nc -z -w 5 "$HOST" "$PORT"; then
+            echo "Ngrok tunnel is reachable from the runner"
+          else
+            echo "WARNING: Unable to reach ngrok tunnel from the runner" >&2
+          fi
 
       - name: Save connection info
         run: |
@@ -83,6 +117,9 @@ jobs:
           if [ -f ngrok.txt ]; then
             echo "Ngrok Tunnel: $(cat ngrok.txt)" >> connection-info.txt
           fi
+          if [ -n "$TAILSCALE_IP" ]; then
+            echo "Tailscale IP: ${TAILSCALE_IP}:5900" >> connection-info.txt
+          fi
 
       - name: Upload connection info artifact
         uses: actions/upload-artifact@v4
@@ -92,7 +129,7 @@ jobs:
 
       - name: Keep alive with cleanup trap
         run: |
-          trap 'vncserver -kill :0; if [ -f ngrok.pid ]; then kill $(cat ngrok.pid) 2>/dev/null || true; fi' EXIT
+          trap 'vncserver -kill :0; if [ -f ngrok.pid ]; then kill $(cat ngrok.pid) 2>/dev/null || true; fi; sudo pkill tailscaled 2>/dev/null || true; sudo pkill tailscale 2>/dev/null || true' EXIT
           while true; do
             echo "[$(date)] VNC Active - Cancel workflow to terminate"
             sleep 300
