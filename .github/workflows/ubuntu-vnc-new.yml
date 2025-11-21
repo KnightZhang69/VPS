@@ -67,12 +67,13 @@ jobs:
 
       - name: Save connection info
         run: |
+          PUBLIC_IP=$(curl -s ifconfig.me)
           if [ -n "${{ secrets.VNC_PASSWORD }}" ]; then
             echo "VNC Password: ${{ secrets.VNC_PASSWORD }}" > connection-info.txt
           else
             echo "VNC Password: vncpassword" > connection-info.txt
           fi
-          echo "Local VNC: localhost:5900" >> connection-info.txt
+          echo "VNC Address: $PUBLIC_IP:5900" >> connection-info.txt
           if [ -f ngrok.txt ]; then
             echo "Ngrok Tunnel: $(cat ngrok.txt)" >> connection-info.txt
           fi
