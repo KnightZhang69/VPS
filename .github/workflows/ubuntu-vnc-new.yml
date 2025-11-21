@@ -74,6 +74,8 @@ jobs:
             echo "VNC Password: vncpassword" > connection-info.txt
           fi
           echo "VNC Address: $PUBLIC_IP:5900" >> connection-info.txt
+          echo "WARNING: The VNC Address might not be accessible from the internet due to firewall restrictions." >> connection-info.txt
+          echo "It is recommended to use the Ngrok Tunnel for a reliable connection." >> connection-info.txt
           if [ -f ngrok.txt ]; then
             echo "Ngrok Tunnel: $(cat ngrok.txt)" >> connection-info.txt
           fi
