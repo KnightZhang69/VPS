@@ -50,7 +50,7 @@ jobs:
           vncserver :0 -localhost no -geometry 1280x800 -depth 24 -SecurityTypes VncAuth -xstartup ~/.vnc/xstartup
 
       - name: Start Ngrok tunnel (optional)
-        if: secrets.NGROK_AUTH_TOKEN != ''
+        if: ${{ secrets.NGROK_AUTH_TOKEN != '' }}
         env:
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
         run: |
