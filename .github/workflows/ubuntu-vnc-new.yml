@@ -1,0 +1,78 @@
+name: Ubuntu XFCE VNC Server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ubuntu-vnc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360   # Correct max runtime
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache APT packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-${{ hashFiles('**/apt-packages.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+
+      - name: Update APT
+        run: sudo apt-get update
+
+      - name: Install XFCE Desktop + VNC
+        run: |
+          sudo apt-get install -y xfce4 xfce4-goodies tightvncserver
+          mkdir -p ~/.vnc
+          echo "${{ secrets.VNC_PASSWORD }}" | vncpasswd -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
+          cat > ~/.vnc/xstartup << 'EOF'
+          #!/bin/bash
+          unset SESSION_MANAGER
+          unset DBUS_SESSION_BUS_ADDRESS
+          startxfce4 &
+          EOF
+          chmod +x ~/.vnc/xstartup
+          vncserver -kill :0 || true
+          vncserver :0 -localhost no -geometry 1280x800 -depth 24 -SecurityTypes VncAuth -xstartup ~/.vnc/xstartup
+
+      - name: Install Ngrok
+        run: |
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt-get update && sudo apt-get install -y ngrok
+
+      - name: Start Ngrok tunnel (optional)
+        if: ${{ secrets.NGROK_AUTH_TOKEN != '' }}
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+        run: |
+          ngrok authtoken $NGROK_AUTH_TOKEN
+          ngrok tcp 5900 &
+          sleep 10
+          curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url' > ngrok.txt
+
+      - name: Save connection info
+        run: |
+          echo "VNC Password: ${{ secrets.VNC_PASSWORD }}" > connection-info.txt
+          echo "Local VNC: localhost:5900" >> connection-info.txt
+          if [ -f ngrok.txt ]; then
+            echo "Ngrok Tunnel: $(cat ngrok.txt)" >> connection-info.txt
+          fi
+
+      - name: Upload connection info artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnc-connection-info
+          path: connection-info.txt
+
+      - name: Keep alive with cleanup trap
+        run: |
+          trap "vncserver -kill :0; pkill ngrok" EXIT
+          while true; do
+            echo "[$(date)] VNC Active - Cancel workflow to terminate"
+            sleep 300
+          done
