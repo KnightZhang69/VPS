@@ -1,5 +1,5 @@
 xfce4
 xfce4-goodies
-tightvncserver
+tigervnc-standalone-server
 jq
 ngrok
