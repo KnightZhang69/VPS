@@ -33,6 +33,8 @@ jobs:
       - name: Configure VNC
         run: |
           mkdir -p ~/.vnc
+          touch ~/.Xauthority
+          chmod 600 ~/.Xauthority
           if [ -n "${{ secrets.VNC_PASSWORD }}" ]; then
             echo "${{ secrets.VNC_PASSWORD }}" | vncpasswd -f > ~/.vnc/passwd
           else
@@ -47,7 +49,7 @@ jobs:
           EOF
           chmod +x ~/.vnc/xstartup
           vncserver -kill :0 || true
-          vncserver :0 -geometry 1280x1024 -depth 24 -SecurityTypes None
+          vncserver :0 -geometry 1280x1024 -depth 24 -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd
 
       - name: Start Ngrok tunnel (optional)
         env:
@@ -55,7 +57,9 @@ jobs:
         if: ${{ env.NGROK_AUTH_TOKEN_CHECK != '' }}
         run: |
           ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-          ngrok tcp 5900 &
+          nohup ngrok tcp 5900 >/tmp/ngrok.log 2>&1 &
+          NGROK_PID=$!
+          echo $NGROK_PID > ngrok.pid
           for i in {1..10}; do
             TUNNEL_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
             if [ -n "$TUNNEL_URL" ] && [ "$TUNNEL_URL" != "null" ]; then
@@ -88,7 +92,7 @@ jobs:
 
       - name: Keep alive with cleanup trap
         run: |
-          trap "vncserver -kill :0; pkill ngrok" EXIT
+          trap 'vncserver -kill :0; if [ -f ngrok.pid ]; then kill $(cat ngrok.pid) 2>/dev/null || true; fi' EXIT
           while true; do
             echo "[$(date)] VNC Active - Cancel workflow to terminate"
             sleep 300
