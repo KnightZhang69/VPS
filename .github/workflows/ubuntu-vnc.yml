@@ -54,7 +54,7 @@ jobs:
           EOF
           chmod +x ~/.vnc/xstartup
           vncserver -kill :0 || true
-          vncserver :0 -localhost no -geometry 1280x800 -depth 24 -xstartup ~/.vnc/xstartup
+          vncserver :0 -localhost no -geometry 1280x800 -depth 24 -SecurityTypes VncAuth -xstartup ~/.vnc/xstartup
 
       - name: Install Tailscale
         run: curl -fsSL https://tailscale.com/install.sh | sh
