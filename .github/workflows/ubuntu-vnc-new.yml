@@ -47,7 +47,7 @@ jobs:
           EOF
           chmod +x ~/.vnc/xstartup
           vncserver -kill :0 || true
-          vncserver :0 -geometry 1280x800 -depth 24 -SecurityTypes VncAuth -xstartup ~/.vnc/xstartup
+          vncserver :0 -geometry 1280x800 -depth 24 -xstartup ~/.vnc/xstartup
 
       - name: Start Ngrok tunnel (optional)
         env:
