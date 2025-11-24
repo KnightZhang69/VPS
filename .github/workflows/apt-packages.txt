@@ -4,3 +4,4 @@ tigervnc-standalone-server
 jq
 ngrok
 chromium-browser
+x11-xserver-utils

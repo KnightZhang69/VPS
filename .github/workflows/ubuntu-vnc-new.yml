@@ -54,6 +54,27 @@ jobs:
           chmod +x ~/.vnc/xstartup
           vncserver -kill :0 || true
           vncserver :0 -geometry 1280x1024 -depth 24 -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd -localhost no
+          
+          # Fix permissions for Snap apps
+          export DISPLAY=:0
+          xhost +
+          
+          # Create Chromium Desktop Shortcut
+          mkdir -p ~/Desktop
+          mkdir -p ~/.local/share/applications
+          cat > ~/Desktop/chromium.desktop <<EOF
+          [Desktop Entry]
+          Version=1.0
+          Name=Chromium Web Browser
+          Comment=Access the Internet
+          Exec=bash -c "export DISPLAY=:0 && chromium-browser --no-sandbox"
+          Icon=chromium-browser
+          Terminal=false
+          Type=Application
+          Categories=Network;WebBrowser;
+          EOF
+          chmod +x ~/Desktop/chromium.desktop
+          cp ~/Desktop/chromium.desktop ~/.local/share/applications/
 
       - name: Install Tailscale (optional)
         if: ${{ env.TAILSCALE_AUTH_KEY != '' }}
