@@ -53,7 +53,7 @@ jobs:
           EOF
           chmod +x ~/.vnc/xstartup
           vncserver -kill :0 || true
-          vncserver :0 -geometry 1920x1200 -randr 1920x1200,1600x1200,1440x900,1280x1024,1024x768 -depth 24 -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd -localhost no
+          vncserver :0 -geometry 1920x1200 -depth 24 -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd -localhost no
           
           # Fix permissions for Snap apps
           export DISPLAY=:0
