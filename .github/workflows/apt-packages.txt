@@ -3,3 +3,4 @@ xfce4-goodies
 tigervnc-standalone-server
 jq
 ngrok
+chromium-browser
