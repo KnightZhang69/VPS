@@ -5,7 +5,7 @@ on:
 
 jobs:
   ubuntu-vnc:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm   # ARM64 runner
     timeout-minutes: 360   # Correct max runtime
     env:
       VNC_PASSWORD_SECRET: ${{ secrets.VNC_PASSWORD }}
