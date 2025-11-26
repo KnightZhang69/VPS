@@ -29,18 +29,30 @@ jobs:
           echo "VNC_PASSWORD=$PASS" >> "$GITHUB_ENV"
           
           # Reset: Deactivate and stop any existing Remote Management service
-          # This ensures a clean state and fixes "Screen Sharing not allowed" errors
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -deactivate -configure -access -off
           sleep 5
           
-          # Create a dedicated VNC user 'vncuser'
-          # This avoids permission issues with modifying the 'runner' user
-          sudo sysadminctl -addUser vncuser -fullName "VNC User" -password "$PASS" -admin
+          # Create a dedicated VNC user 'vncuser' using dscl (more explicit control)
+          sudo dscl . -create /Users/vncuser
+          sudo dscl . -create /Users/vncuser UserShell /bin/bash
+          sudo dscl . -create /Users/vncuser RealName "VNC User"
+          sudo dscl . -create /Users/vncuser UniqueID 1001
+          sudo dscl . -create /Users/vncuser PrimaryGroupID 80
+          sudo dscl . -create /Users/vncuser NFSHomeDirectory /Users/vncuser
+          sudo dscl . -passwd /Users/vncuser "$PASS"
+          sudo createhomedir -c -u vncuser > /dev/null
           
-          # Configure VNC to allow access for the new user
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -allowAccessFor -specifiedUsers
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -access -on -privs -all -users vncuser
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -restart -agent -console
+          # Enable VNC with legacy password support (critical for many clients)
+          # This Perl script sets the VNC password in the system preferences
+          echo "$PASS" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; $_ = <>; chomp; s/^(.{8}).*/$1/; @p = unpack "C*", $_; foreach (@k) { printf "%02X", $_ ^ (shift @p || 0) }; print "\n"' | sudo tee /Library/Preferences/com.apple.VNCSettings.txt
+          
+          # Configure VNC to allow access for all users (simplest for now) and enable legacy support
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -allowAccessFor -allUsers -privs -all
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvnclegacy -vnclegacy yes
+          
+          # Restart and Activate the agent
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent -console
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
           
           # Confirmation message
           echo "macOS Screen Sharing (VNC) enabled for user 'vncuser'"
