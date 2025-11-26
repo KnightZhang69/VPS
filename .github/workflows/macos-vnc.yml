@@ -28,6 +28,10 @@ jobs:
           echo "Generated password length: ${#PASS}"
           echo "VNC_PASSWORD=$PASS" >> "$GITHUB_ENV"
           
+          # Set the system user password for 'runner' to match the VNC password
+          # This allows the VNC client to authenticate as the 'runner' user
+          sudo dscl . -passwd /Users/runner "$PASS"
+          
           # Enable Remote Management with VNC and set password via command line tool 'kickstart'
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -allowAccessFor -allUsers -privs -all
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvnclegacy -vnclegacy yes
