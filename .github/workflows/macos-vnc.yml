@@ -45,7 +45,13 @@ jobs:
           # Note: Vine Server runs as a user application, so we run it as the runner user
           # It listens on port 5900 by default
           echo "Starting Vine Server..."
-          /Applications/Vine\ Server.app/Contents/MacOS/OSXvnc-server -rfbport 5900 -desktop "GitHub Runner" -rfbauth "$PASS" -nowait &
+          
+          # Generate VNC password file
+          # storepasswd is usually in the same directory as OSXvnc-server
+          /Applications/Vine\ Server.app/Contents/MacOS/storepasswd "$PASS" /Users/runner/.vncpasswd
+          
+          # Start the server with the password file
+          /Applications/Vine\ Server.app/Contents/MacOS/OSXvnc-server -rfbport 5900 -desktop "GitHub Runner" -rfbauth /Users/runner/.vncpasswd -nowait &
           
           # Confirmation message
           echo "Vine Server (OSXvnc) started on port 5900"
@@ -94,9 +100,9 @@ jobs:
         run: |
           echo "=== VNC ACCESS INFORMATION ==="
           echo "Address: ${TAILSCALE_IP}:5900"
-          echo "Username: vncuser"
+          echo "Username: (Leave Empty or use 'runner')"
           echo "Password: ${VNC_PASSWORD}"
-          echo "Desktop: macOS Native Screen Sharing"
+          echo "Desktop: Vine Server (OSXvnc)"
           echo "=============================="
           while true; do
             echo "[$(date)] VNC Active - Cancel workflow to terminate"
