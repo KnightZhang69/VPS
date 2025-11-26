@@ -66,6 +66,7 @@ jobs:
         run: |
           echo "=== VNC ACCESS INFORMATION ==="
           echo "Address: ${TAILSCALE_IP}:5900"
+          echo "Username: $USER"
           echo "Password: ${VNC_PASSWORD}"
           echo "Desktop: macOS Native Screen Sharing"
           echo "=============================="
