@@ -19,8 +19,13 @@ jobs:
 
       - name: Configure and Start macOS VNC Server
         run: |
-          # Set VNC password using a temporary variable, then clear it
-          PASS=$(tr -dc 'A-Za-z0-9!@#$%^&*' </dev/urandom | head -c 16)
+          # Set VNC password using openssl (more robust on macOS)
+          PASS=$(openssl rand -hex 8)
+          if [ -z "$PASS" ]; then
+            echo "Error: Failed to generate password"
+            exit 1
+          fi
+          echo "Generated password length: ${#PASS}"
           echo "VNC_PASSWORD=$PASS" >> "$GITHUB_ENV"
           
           # Enable Remote Management with VNC and set password via command line tool 'kickstart'
