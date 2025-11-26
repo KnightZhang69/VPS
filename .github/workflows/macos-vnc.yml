@@ -27,7 +27,7 @@ jobs:
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -allowAccessFor -allUsers -privs -all
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvnclegacy -vnclegacy yes
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "$PASS"
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent -console
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -restart -agent -console
           
           # Confirmation message
           echo "macOS Screen Sharing (VNC) enabled"
@@ -51,6 +51,14 @@ jobs:
       - name: Verify VNC Connection
         run: |
           echo "Tailscale IP: $TAILSCALE_IP"
+          
+          echo "Checking for listening ports..."
+          netstat -an | grep 5900 || echo "Port 5900 not found in netstat"
+          
+          echo "Checking localhost connection..."
+          nc -z -v 127.0.0.1 5900 || echo "Localhost connection failed"
+          
+          echo "Checking Tailscale IP connection..."
           # Use 'nc' (netcat) to verify the VNC port 5900 is open on the runner's IP
           nc -z -v "$TAILSCALE_IP" 5900
 
