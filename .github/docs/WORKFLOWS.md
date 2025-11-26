@@ -4,18 +4,18 @@ This document provides an explanation of the GitHub Actions workflows defined in
 
 ## Core Concepts
 
-Both workflows follow a similar pattern:
+All workflows follow a similar pattern:
 
 1.  **Manual Trigger:** They are triggered manually via `workflow_dispatch`, not by code pushes or pull requests.
-2.  **Secure Tunneling:** They use [Tailscale](https://tailscale.com/) to create a secure peer-to-peer VPN connection to the runner. This avoids exposing the remote access port to the public internet.
-3.  **Dynamic Credentials:** Access credentials (passwords) are generated dynamically for each run.
+2.  **Secure Tunneling:** They use [Tailscale](https://tailscale.com/) to create a secure peer-to-peer VPN connection to the runner. This avoids exposing the remote access port to the public internet. Some workflows also offer [ngrok](https://ngrok.com/) as an alternative.
+3.  **Dynamic Credentials:** Access credentials (passwords) are generated dynamically for each run, or can be provided via secrets.
 4.  **Long-Running Sessions:** They are configured with a long timeout and a final "keep-alive" step to allow for extended interactive sessions. The workflow must be manually canceled to terminate the session.
 
 ---
 
 ## Workflows
 
-### 1. Ubuntu VNC Server (`ubuntu-vnc.yml`)
+### 1. Ubuntu VNC Server (GNOME) (`ubuntu-vnc.yml`)
 
 This workflow provisions an Ubuntu runner with a full GNOME desktop environment and makes it accessible via a VNC client.
 
@@ -48,7 +48,45 @@ graph TD
     6.  The workflow prints the Tailscale IP address and the generated VNC password to the workflow logs.
     7.  A final loop keeps the runner active until it is manually stopped.
 
-### 2. Windows RDP Server (`windows-rdp.yml`)
+### 2. Ubuntu VNC Server (XFCE) (`ubuntu-vnc-new.yml`)
+
+This workflow provisions an Ubuntu ARM64 runner with a lightweight XFCE desktop environment. It offers flexible connectivity via Tailscale or ngrok.
+
+**Mermaid Diagram:**
+```mermaid
+graph TD
+    A[Start: Manual Trigger] --> B{Runner: ubuntu-24.04-arm};
+    B --> C[Checkout Code & Cache APT];
+    C --> D[Install XFCE & VNC];
+    D --> E{Configure VNC Password};
+    E -- Secret --> F[Use VNC_PASSWORD secret];
+    E -- Default --> G[Use default password];
+    F --> H[Start VNC Server];
+    G --> H;
+    H --> I{Connectivity Options};
+    I -- Tailscale --> J[Setup Tailscale];
+    I -- Ngrok --> K[Setup Ngrok Tunnel];
+    J --> L[Output Connection Info];
+    K --> L;
+    L --> M[Keep Session Alive];
+    M --> N[End: Manual Cancellation];
+```
+
+**Key Steps:**
+
+- **Platform:** `ubuntu-24.04-arm`
+- **Remote Access:** VNC
+- **Process:**
+    1.  Starts on an ARM64 Ubuntu runner.
+    2.  Installs an XFCE desktop environment and `vncserver`.
+    3.  Configures the VNC password. It will use the `VNC_PASSWORD` secret if provided, otherwise it falls back to a default password (`vncpassword`).
+    4.  **Connectivity:**
+        - **Tailscale:** If the `TAILSCALE_AUTH_KEY` secret is present, it will connect the runner to your Tailnet.
+        - **Ngrok:** If the `NGROK_AUTH_TOKEN` secret is present, it will create a public TCP tunnel to the VNC port.
+    5.  Connection details (IP addresses, tunnel URL, password) are saved as a workflow artifact named `vnc-connection-info`.
+    6.  A final loop keeps the runner active.
+
+### 3. Windows RDP Server (`windows-rdp.yml`)
 
 This workflow provisions a Windows runner and makes it accessible via a Remote Desktop Protocol (RDP) client.
 
@@ -80,13 +118,44 @@ graph TD
     4.  The workflow prints the runner's Tailscale IP address and the `vum` user's password to the workflow logs.
     5.  A final loop keeps the runner active until it is manually stopped.
 
+### 4. macOS VNC Server (`macos-vnc.yml`)
+
+This workflow provisions a macOS runner with a VNC server, accessible over Tailscale.
+
+**Mermaid Diagram:**
+
+```mermaid
+graph TD
+    A[Start: Manual Trigger] --> B{Runner: macos-13};
+    B --> C[Checkout Code];
+    C --> D[Install Vine VNC Server];
+    D --> E[Create 'vncuser' & Generate Password];
+    E --> F[Install & Configure Tailscale];
+    F --> G{Connect to Tailscale VPN};
+    G --> H[Output VNC Address & Credentials];
+    H --> I[Keep Session Alive];
+    I --> J[End: Manual Cancellation];
+```
+
+**Key Steps:**
+- **Platform:** `macos-13`
+- **Remote Access:** VNC
+- **Process:**
+    1. Starts on a macOS 13 runner.
+    2. Installs and starts `Vine Server` (a VNC server) to avoid macOS screen recording permissions issues.
+    3. Creates a local user `vncuser` with a dynamically generated password.
+    4. Installs Tailscale via Homebrew and connects to the VPN using the `TAILSCALE_AUTH_KEY` secret.
+    5. The workflow outputs the Tailscale IP and the generated password for the `vncuser`.
+    6. A final loop keeps the runner active.
+
+
 ## How to Use
 
 1.  Go to the "Actions" tab of the repository.
-2.  Select either the "Ubuntu VNC Server" or "Windows RDP Server" workflow from the list.
+2.  Select one of the VNC or RDP workflows from the list.
 3.  Click the "Run workflow" button.
-4.  Once the job starts, expand the logs for the `secure-rdp` or `ubuntu-vnc` job.
+4.  Once the job starts, expand the logs for the main job (`ubuntu-vnc`, `secure-rdp`, etc.).
 5.  Wait for the "Connect to Tailscale" and credential generation steps to complete.
-6.  Look for the output containing the IP address and password.
+6.  Look for the output containing the IP address and password. For the `ubuntu-vnc-new` workflow, check the `vnc-connection-info` artifact.
 7.  Use your local Tailscale client and a VNC/RDP client to connect.
 8.  **Important:** When you are finished, you **must** manually cancel the workflow run from the Actions tab to shut down the runner.

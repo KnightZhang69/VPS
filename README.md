@@ -4,9 +4,11 @@ This repository contains GitHub Actions workflows designed to provide secure, te
 
 ## Features
 
--   **Ubuntu VNC Server:** Provision an Ubuntu runner with a GNOME desktop and access it securely via VNC over Tailscale.
+-   **Ubuntu VNC Server (GNOME):** Provision an Ubuntu runner with a GNOME desktop and access it securely via VNC over Tailscale.
+-   **Ubuntu VNC Server (XFCE):** Provision an Ubuntu ARM64 runner with a lightweight XFCE desktop, accessible via Tailscale or ngrok.
 -   **Windows RDP Server:** Provision a Windows runner and access it securely via RDP over Tailscale.
--   **Secure Access:** All remote connections are tunneled through [Tailscale](https://tailscale.com/), providing a secure, peer-to-peer VPN connection.
+-   **macOS VNC Server:** Provision a macOS runner and access it securely via VNC over Tailscale.
+-   **Secure Access:** All remote connections are tunneled through [Tailscale](https://tailscale.com/), with some workflows also supporting [ngrok](https://ngrok.com/).
 -   **Dynamic Credentials:** VNC and RDP passwords are generated dynamically for each workflow run, ensuring unique and temporary access.
 -   **Long-Running Sessions:** Workflows are configured for extended sessions, allowing ample time for your tasks.
 
