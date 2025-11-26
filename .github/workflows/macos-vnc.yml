@@ -28,18 +28,17 @@ jobs:
           echo "Generated password length: ${#PASS}"
           echo "VNC_PASSWORD=$PASS" >> "$GITHUB_ENV"
           
-          # Set the system user password for 'runner' to match the VNC password
-          # This allows the VNC client to authenticate as the 'runner' user
-          sudo dscl . -passwd /Users/runner "$PASS"
+          # Create a dedicated VNC user 'vncuser'
+          # This avoids permission issues with modifying the 'runner' user
+          sudo sysadminctl -addUser vncuser -fullName "VNC User" -password "$PASS" -admin
           
-          # Enable Remote Management with VNC and set password via command line tool 'kickstart'
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -allowAccessFor -allUsers -privs -all
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvnclegacy -vnclegacy yes
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "$PASS"
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -restart -agent -console
+          # Configure VNC to allow access for the new user
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -allowAccessFor -specifiedUsers
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -access -on -privs -all -users vncuser
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -restart -agent -console
           
           # Confirmation message
-          echo "macOS Screen Sharing (VNC) enabled"
+          echo "macOS Screen Sharing (VNC) enabled for user 'vncuser'"
 
       - name: Install Tailscale
         # Use Homebrew to install Tailscale on macOS
@@ -75,7 +74,7 @@ jobs:
         run: |
           echo "=== VNC ACCESS INFORMATION ==="
           echo "Address: ${TAILSCALE_IP}:5900"
-          echo "Username: $USER"
+          echo "Username: vncuser"
           echo "Password: ${VNC_PASSWORD}"
           echo "Desktop: macOS Native Screen Sharing"
           echo "=============================="
