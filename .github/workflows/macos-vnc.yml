@@ -28,6 +28,11 @@ jobs:
           echo "Generated password length: ${#PASS}"
           echo "VNC_PASSWORD=$PASS" >> "$GITHUB_ENV"
           
+          # Reset: Deactivate and stop any existing Remote Management service
+          # This ensures a clean state and fixes "Screen Sharing not allowed" errors
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -deactivate -configure -access -off
+          sleep 5
+          
           # Create a dedicated VNC user 'vncuser'
           # This avoids permission issues with modifying the 'runner' user
           sudo sysadminctl -addUser vncuser -fullName "VNC User" -password "$PASS" -admin
