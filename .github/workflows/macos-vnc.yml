@@ -1,0 +1,67 @@
+name: MacOS VNC Server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  macos-vnc:
+    runs-on: macos-latest # Changed to use the macOS runner
+    timeout-minutes: 3600
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Note: macOS runners come pre-installed with many tools, including Homebrew.
+      # The Ubuntu-specific scripts (Update APT, Prevent auto-start, systemctl hooks,
+      # precreate users, install desktop/VNC, validate, re-enable, restore) are removed
+      # as they are not applicable to macOS.
+
+      - name: Configure and Start macOS VNC Server
+        run: |
+          # Set VNC password using a temporary variable, then clear it
+          PASS=$(tr -dc 'A-Za-z0-9!@#$%^&*' </dev/urandom | head -c 16)
+          echo "VNC_PASSWORD=$PASS" >> "$GITHUB_ENV"
+          
+          # Enable Remote Management with VNC and set password via command line tool 'kickstart'
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -allowAccessFor -allUsers -privs -all
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvnclegacy -vnclegacy yes
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw "$PASS"
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent -console
+          
+          # Confirmation message
+          echo "macOS Screen Sharing (VNC) enabled"
+
+      - name: Install Tailscale
+        # Use Homebrew to install Tailscale on macOS
+        run: brew install tailscale
+
+      - name: Start tailscaled (manual)
+        run: |
+          # On macOS, tailscaled runs a little differently
+          nohup sudo /opt/homebrew/bin/tailscaled >/tmp/tailscaled.log 2>&1 & disown
+          sleep 3
+
+      - name: Connect to Tailscale
+        run: |
+          # Ensure the correct path for the tailscale binary installed via Homebrew
+          sudo /opt/homebrew/bin/tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${GITHUB_RUN_ID}
+          echo "TAILSCALE_IP=$(/opt/homebrew/bin/tailscale ip -4)" >> "$GITHUB_ENV"
+
+      - name: Verify VNC Connection
+        run: |
+          echo "Tailscale IP: $TAILSCALE_IP"
+          # Use 'nc' (netcat) to verify the VNC port 5900 is open on the runner's IP
+          nc -z -v "$TAILSCALE_IP" 5900
+
+      - name: Keep Connection Alive
+        run: |
+          echo "=== VNC ACCESS INFORMATION ==="
+          echo "Address: ${TAILSCALE_IP}:5900"
+          echo "Password: ${VNC_PASSWORD}"
+          echo "Desktop: macOS Native Screen Sharing"
+          echo "=============================="
+          while true; do
+            echo "[$(date)] VNC Active - Cancel workflow to terminate"
+            sleep 300
+          done
