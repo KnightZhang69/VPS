@@ -5,7 +5,7 @@ on:
 
 jobs:
   macos-vnc:
-    runs-on: macos-latest # Changed to use the macOS runner
+    runs-on: macos-13 # Use macOS 13 (Ventura) for better VNC compatibility
     timeout-minutes: 3600
 
     steps:
