@@ -28,11 +28,10 @@ jobs:
           echo "Generated password length: ${#PASS}"
           echo "VNC_PASSWORD=$PASS" >> "$GITHUB_ENV"
           
-          # Reset: Deactivate and stop any existing Remote Management service
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -deactivate -configure -access -off
-          sleep 5
+          # Install Vine Server (OSXvnc) to bypass TCC issues with built-in Screen Sharing
+          brew install --cask vine-server
           
-          # Create a dedicated VNC user 'vncuser' using dscl (more explicit control)
+          # Create a dedicated VNC user 'vncuser'
           sudo dscl . -create /Users/vncuser
           sudo dscl . -create /Users/vncuser UserShell /bin/bash
           sudo dscl . -create /Users/vncuser RealName "VNC User"
@@ -42,20 +41,14 @@ jobs:
           sudo dscl . -passwd /Users/vncuser "$PASS"
           sudo createhomedir -c -u vncuser > /dev/null
           
-          # Enable VNC with legacy password support (critical for many clients)
-          # This Perl script sets the VNC password in the system preferences
-          echo "$PASS" | perl -we 'BEGIN { @k = unpack "C*", pack "H*", "1734516E8BA8C5E2FF1C39567390ADCA"}; $_ = <>; chomp; s/^(.{8}).*/$1/; @p = unpack "C*", $_; foreach (@k) { printf "%02X", $_ ^ (shift @p || 0) }; print "\n"' | sudo tee /Library/Preferences/com.apple.VNCSettings.txt
-          
-          # Configure VNC to allow access for all users (simplest for now) and enable legacy support
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -allowAccessFor -allUsers -privs -all
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvnclegacy -vnclegacy yes
-          
-          # Restart and Activate the agent
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent -console
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate
+          # Start Vine Server
+          # Note: Vine Server runs as a user application, so we run it as the runner user
+          # It listens on port 5900 by default
+          echo "Starting Vine Server..."
+          /Applications/Vine\ Server.app/Contents/MacOS/OSXvnc-server -rfbport 5900 -desktop "GitHub Runner" -rfbauth "$PASS" -nowait &
           
           # Confirmation message
-          echo "macOS Screen Sharing (VNC) enabled for user 'vncuser'"
+          echo "Vine Server (OSXvnc) started on port 5900"
 
       - name: Install Tailscale
         # Use Homebrew to install Tailscale on macOS
