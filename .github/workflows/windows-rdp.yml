@@ -33,7 +33,11 @@ jobs:
       - name: Verify RDP Accessibility
         shell: pwsh
         run: .github/workflows/scripts/win-verify-rdp.ps1
-
+        
+      - name: Install Visual Studio Code
+        shell: pwsh
+        run: choco install vscode -y
+        
       - name: Maintain Connection
         shell: pwsh
         run: |
