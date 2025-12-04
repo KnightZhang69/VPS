@@ -38,12 +38,7 @@ jobs:
         shell: pwsh
         run: choco install vscode -y
 
-      - name: Install Cursor IDE
-        shell: pwsh
-        run: |
-          Invoke-WebRequest -Uri "https://downloader.cursor.sh/windows/cursor-setup.exe" -OutFile cursor.exe
-          Start-Process cursor.exe -ArgumentList "/quiet" -Wait
-        
+
       - name: Maintain Connection
         shell: pwsh
         run: |
