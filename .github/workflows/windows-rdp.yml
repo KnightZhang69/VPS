@@ -38,16 +38,11 @@ jobs:
         shell: pwsh
         run: choco install vscode -y
 
-      - name: Configure Winget MS Store Source
-        shell: pwsh
-        run: |
-          winget source update
-          winget settings --enable msstore
-          winget settings --accept-source-agreements
-        
       - name: Install Cursor IDE
         shell: pwsh
-        run: winget install --id anysphere.cursor -e --accept-package-agreements --accept-source-agreements
+        run: |
+          Invoke-WebRequest -Uri "https://downloader.cursor.sh/windows/cursor-setup.exe" -OutFile cursor.exe
+          Start-Process cursor.exe -ArgumentList "/quiet" -Wait
         
       - name: Maintain Connection
         shell: pwsh
