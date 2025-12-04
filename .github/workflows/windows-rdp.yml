@@ -38,6 +38,10 @@ jobs:
         shell: pwsh
         run: choco install vscode -y
         
+      - name: Install Cursor IDE
+        shell: pwsh
+        run: winget install --id anysphere.cursor -e --accept-package-agreements --accept-source-agreements
+        
       - name: Maintain Connection
         shell: pwsh
         run: |
