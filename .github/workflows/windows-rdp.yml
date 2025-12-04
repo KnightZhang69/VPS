@@ -37,6 +37,13 @@ jobs:
       - name: Install Visual Studio Code
         shell: pwsh
         run: choco install vscode -y
+
+      - name: Configure Winget MS Store Source
+        shell: pwsh
+        run: |
+          winget source update
+          winget settings --enable msstore
+          winget settings --accept-source-agreements
         
       - name: Install Cursor IDE
         shell: pwsh
