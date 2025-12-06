@@ -33,12 +33,9 @@ function Download-WithFallback {
         
         # Method 2: Try curl.exe as fallback
         Write-Host "Trying curl.exe fallback..."
-        $curlArgs = @(
-            "-L", "-f", "--retry", "3", "--retry-delay", "2",
-            "--connect-timeout", "30", "-o", $OutFile, $url,
-            "-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        )
-        $process = Start-Process -FilePath "curl.exe" -ArgumentList $curlArgs -Wait -PassThru -NoNewWindow
+        # Note: User-Agent must be quoted properly to avoid argument splitting
+        $curlCmd = "curl.exe -L -f --retry 3 --retry-delay 2 --connect-timeout 30 -o `"$OutFile`" `"$url`""
+        $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $curlCmd -Wait -PassThru -NoNewWindow
         
         if ($process.ExitCode -eq 0 -and (Test-Path $OutFile)) {
             $size = (Get-Item $OutFile).Length
@@ -138,11 +135,41 @@ $cursorUrls = @(
 Install-Editor -Name "Cursor" -Urls $cursorUrls -ProcessName "cursor"
 
 # --- Install Windsurf ---
-# Primary: windsurf-stable.codeiumdata.com (CDN), Fallback: windsurf.codeium.com (API)
-$windsurfUrls = @(
-    "https://windsurf-stable.codeiumdata.com/win32-x64/stable/latest/WindsurfSetup-x64.exe",
-    "https://windsurf.codeium.com/api/windows/x64/stable"
-)
-Install-Editor -Name "Windsurf" -Urls $windsurfUrls -ProcessName "Windsurf"
+# Try winget first (most reliable on GitHub Actions), then direct URLs
+Write-Host "`nProcessing Windsurf..."
+$windsurfInstalled = $false
+
+# Method 1: Try winget (bypasses DNS issues entirely)
+Write-Host "Attempting Windsurf install via winget..."
+try {
+    $wingetResult = Start-Process -FilePath "winget" -ArgumentList "install", "--id", "Codeium.Windsurf", "-e", "--silent", "--accept-package-agreements", "--accept-source-agreements" -Wait -PassThru -NoNewWindow
+    if ($wingetResult.ExitCode -eq 0) {
+        Write-Host "Windsurf installed successfully via winget"
+        $windsurfInstalled = $true
+    } else {
+        Write-Host "Winget install failed with exit code: $($wingetResult.ExitCode)"
+    }
+} catch {
+    Write-Host "Winget not available or failed: $($_.Exception.Message)"
+}
+
+# Method 2: Try direct download if winget failed
+if (-not $windsurfInstalled) {
+    $windsurfUrls = @(
+        "https://windsurf-stable.codeiumdata.com/win32-x64/stable/latest/WindsurfSetup-x64.exe",
+        "https://windsurf.codeium.com/api/windows/x64/stable"
+    )
+    Install-Editor -Name "Windsurf" -Urls $windsurfUrls -ProcessName "Windsurf"
+} else {
+    # Create shortcut for winget-installed Windsurf
+    $windsurfPath = "$env:LOCALAPPDATA\Programs\Windsurf\Windsurf.exe"
+    if (Test-Path $windsurfPath) {
+        $WshShell = New-Object -comObject WScript.Shell
+        $Shortcut = $WshShell.CreateShortcut("$publicDesktop\Windsurf.lnk")
+        $Shortcut.TargetPath = $windsurfPath
+        $Shortcut.Save()
+        Write-Host "Windsurf shortcut created on Public Desktop."
+    }
+}
 
 Write-Host "`nAI Editors installation process complete."
