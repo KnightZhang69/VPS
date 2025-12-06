@@ -20,6 +20,10 @@ jobs:
         shell: pwsh
         run: .github/workflows/scripts/win-create-user.ps1
 
+      - name: Install AI Editors (Cursor & Windsurf)
+        shell: pwsh
+        run: .github/workflows/scripts/win-install-editors.ps1        
+
       - name: Install Tailscale
         shell: pwsh
         run: .github/workflows/scripts/win-install-tailscale.ps1
@@ -35,9 +39,6 @@ jobs:
         run: .github/workflows/scripts/win-verify-rdp.ps1
 # ... existing steps ...
 
-      - name: Install AI Editors (Cursor & Windsurf)
-        shell: pwsh
-        run: .github/workflows/scripts/win-install-editors.ps1
 
       - name: Maintain Connection
         shell: pwsh
