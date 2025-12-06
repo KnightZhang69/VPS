@@ -2,51 +2,74 @@
 
 Write-Host "--- Installing AI Editors (Cursor & Windsurf) ---"
 
-# --- NETWORK FIX: Disable IPv6 (Common cause of CI timeouts) ---
-# Instead of changing DNS servers (which can be blocked), we disable IPv6
-# to force the runner to use the working IPv4 stack provided by Azure.
-Write-Host "Disabling IPv6 on all adapters..."
-Get-NetAdapterBinding -ComponentID ms_tcpip6 | Disable-NetAdapterBinding -ErrorAction SilentlyContinue
-Write-Host "IPv6 Disabled."
-
-# Flush DNS to clear any bad cached states
-Clear-DnsClientCache
-# ---------------------------------------------------------------
-
 $destBase = "C:\AI_Editors"
 New-Item -ItemType Directory -Force -Path $destBase | Out-Null
 $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
 
+function Download-WithFallback {
+    param (
+        [string]$Name,
+        [string[]]$Urls,
+        [string]$OutFile
+    )
+    
+    foreach ($url in $Urls) {
+        Write-Host "Attempting download from: $url"
+        
+        # Method 1: Try Invoke-WebRequest (uses Windows native HTTP stack)
+        try {
+            $ProgressPreference = 'SilentlyContinue'  # Speed up download
+            Invoke-WebRequest -Uri $url -OutFile $OutFile -UseBasicParsing -TimeoutSec 120
+            if (Test-Path $OutFile) {
+                $size = (Get-Item $OutFile).Length
+                if ($size -gt 1000000) {  # File should be > 1MB
+                    Write-Host "Download successful via Invoke-WebRequest ($([math]::Round($size/1MB, 2)) MB)"
+                    return $true
+                }
+            }
+        } catch {
+            Write-Host "Invoke-WebRequest failed: $($_.Exception.Message)"
+        }
+        
+        # Method 2: Try curl.exe as fallback
+        Write-Host "Trying curl.exe fallback..."
+        $curlArgs = @(
+            "-L", "-f", "--retry", "3", "--retry-delay", "2",
+            "--connect-timeout", "30", "-o", $OutFile, $url,
+            "-A", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        )
+        $process = Start-Process -FilePath "curl.exe" -ArgumentList $curlArgs -Wait -PassThru -NoNewWindow
+        
+        if ($process.ExitCode -eq 0 -and (Test-Path $OutFile)) {
+            $size = (Get-Item $OutFile).Length
+            if ($size -gt 1000000) {
+                Write-Host "Download successful via curl ($([math]::Round($size/1MB, 2)) MB)"
+                return $true
+            }
+        }
+        
+        Write-Host "Failed with URL: $url"
+        if (Test-Path $OutFile) { Remove-Item $OutFile -Force }
+    }
+    
+    return $false
+}
+
 function Install-Editor {
     param (
         [string]$Name,
-        [string]$Url,
+        [string[]]$Urls,
         [string]$ProcessName
     )
 
-    Write-Host "Processing $Name..."
+    Write-Host "`nProcessing $Name..."
     $installer = "$env:TEMP\$Name-setup.exe"
     
-    # 1. Download using curl.exe
-    # We use curl with specific flags to work around CI network flakiness.
-    Write-Host "Downloading $Name from $Url..."
+    # 1. Download with multiple URL fallbacks
+    $downloaded = Download-WithFallback -Name $Name -Urls $Urls -OutFile $installer
     
-    $curlArgs = @(
-        "--ipv4",                                      # Force IPv4 Resolution
-        "-L",                                          # Follow Redirects
-        "-f",                                          # Fail on HTTP errors
-        "--retry", "5",                                # Retry 5 times
-        "--retry-delay", "3",                          # Wait 3s between retries
-        "--connect-timeout", "10",                     # Timeout connection after 10s
-        "-o", $installer,                              # Output file
-        $Url,                                          # Target URL
-        "-A", "Mozilla/5.0"                            # User Agent
-    )
-    
-    $process = Start-Process -FilePath "curl.exe" -ArgumentList $curlArgs -Wait -PassThru -NoNewWindow
-    
-    if ($process.ExitCode -ne 0) {
-        Write-Warning "Failed to download $Name. Curl exit code: $($process.ExitCode)"
+    if (-not $downloaded) {
+        Write-Warning "Failed to download $Name from all sources."
         return
     }
 
@@ -95,9 +118,20 @@ function Install-Editor {
 }
 
 # --- Install Cursor ---
-Install-Editor -Name "Cursor" -Url "https://downloader.cursor.sh/windows/x64" -ProcessName "cursor"
+# Primary: downloads.cursor.com (CDN), Fallback: downloader.cursor.sh (redirect service)
+$cursorUrls = @(
+    "https://download.todesktop.com/230313mzl4w4u92/Cursor%20Setup%200.48.9%20-%20Build%20250207gv5l8m0hu-x64.exe",
+    "https://downloads.cursor.com/production/21a2ed198584d56a91c0b996d1a09c93f8538440/win32/x64/user-setup/CursorUserSetup-x64-2.1.49.exe",
+    "https://downloader.cursor.sh/windows/x64"
+)
+Install-Editor -Name "Cursor" -Urls $cursorUrls -ProcessName "cursor"
 
 # --- Install Windsurf ---
-Install-Editor -Name "Windsurf" -Url "https://windsurf.codeium.com/api/windows/x64/stable" -ProcessName "Windsurf"
+# Primary: windsurf-stable.codeiumdata.com (CDN), Fallback: windsurf.codeium.com (API)
+$windsurfUrls = @(
+    "https://windsurf-stable.codeiumdata.com/win32-x64/stable/latest/WindsurfSetup-x64.exe",
+    "https://windsurf.codeium.com/api/windows/x64/stable"
+)
+Install-Editor -Name "Windsurf" -Urls $windsurfUrls -ProcessName "Windsurf"
 
-Write-Host "AI Editors installation process complete."
+Write-Host "`nAI Editors installation process complete."
