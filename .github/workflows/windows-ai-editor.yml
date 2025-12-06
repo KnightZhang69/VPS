@@ -1,0 +1,58 @@
+name: Windows AI Server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  secure-rdp:
+    runs-on: windows-latest
+    timeout-minutes: 3600
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure Core RDP Settings
+        shell: pwsh
+        run: .github/workflows/scripts/win-configure-rdp.ps1
+
+      - name: Create RDP User with Secure Password
+        shell: pwsh
+        run: .github/workflows/scripts/win-create-user.ps1
+
+      - name: Install Tailscale
+        shell: pwsh
+        run: .github/workflows/scripts/win-install-tailscale.ps1
+
+      - name: Establish Tailscale Connection
+        shell: pwsh
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: .github/workflows/scripts/win-establish-ts.ps1
+
+      - name: Verify RDP Accessibility
+        shell: pwsh
+        run: .github/workflows/scripts/win-verify-rdp.ps1
+# ... existing steps ...
+
+      - name: Install AI Editors (Cursor & Windsurf)
+        shell: pwsh
+        run: .github/workflows/scripts/win-install-editors.ps1
+
+### Why this script is necessary:
+1.  **User Isolation:** GitHub Actions runs as a system user (`runneradmin`). Cursor and Windsurf are "User Installers" by default, meaning they install into `C:\Users\runneradmin\AppData\Local\...`.
+2.  **RDP Access:** When you RDP in, you log in as `vum`. You cannot see `runneradmin`'s AppData folder easily.
+3.  **The Fix:** This script installs them, then copies the application files to `C:\AI_Editors` (a neutral location) and puts a shortcut on the **Public Desktop** so you can see and launch them immediately upon logging in.
+
+      - name: Maintain Connection
+        shell: pwsh
+        run: |
+          Write-Host "`n=== RDP ACCESS ==="
+          Write-Host "Address: $env:TAILSCALE_IP"
+          Write-Host "Username: vum"
+          Write-Host "Password: $(echo $env:RDP_CREDS)"
+          Write-Host "==================`n"
+          while ($true) {
+            Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+            Start-Sleep -Seconds 300
+          }
