@@ -161,14 +161,25 @@ if (-not $windsurfInstalled) {
     )
     Install-Editor -Name "Windsurf" -Urls $windsurfUrls -ProcessName "Windsurf"
 } else {
-    # Create shortcut for winget-installed Windsurf
-    $windsurfPath = "$env:LOCALAPPDATA\Programs\Windsurf\Windsurf.exe"
-    if (Test-Path $windsurfPath) {
+    # Copy winget-installed Windsurf to shared location (accessible by all users)
+    $windsurfSource = "$env:LOCALAPPDATA\Programs\Windsurf"
+    if (Test-Path $windsurfSource) {
+        Write-Host "Windsurf found at: $windsurfSource"
+        
+        # Copy to shared location
+        $sharedPath = "$destBase\Windsurf"
+        if (Test-Path $sharedPath) { Remove-Item $sharedPath -Recurse -Force }
+        Copy-Item -Path $windsurfSource -Destination $sharedPath -Recurse -Force
+        Write-Host "Copied Windsurf to shared location: $sharedPath"
+        
+        # Create shortcut pointing to shared location
         $WshShell = New-Object -comObject WScript.Shell
         $Shortcut = $WshShell.CreateShortcut("$publicDesktop\Windsurf.lnk")
-        $Shortcut.TargetPath = $windsurfPath
+        $Shortcut.TargetPath = "$sharedPath\Windsurf.exe"
         $Shortcut.Save()
         Write-Host "Windsurf shortcut created on Public Desktop."
+    } else {
+        Write-Warning "Could not find Windsurf installation at: $windsurfSource"
     }
 }
 
