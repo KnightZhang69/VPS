@@ -16,50 +16,32 @@ function Install-Editor {
     Write-Host "Processing $Name..."
     $installer = "$env:TEMP\$Name-setup.exe"
     
-    # 1. Download using Invoke-WebRequest with retry logic
-    # PowerShell's Invoke-WebRequest handles DNS resolution better than curl.exe in GitHub Actions
+    # 1. Download using curl.exe with IP-BASED DNS over HTTPS (DoH)
+    # Using 1.1.1.1 directly avoids the need to resolve 'cloudflare-dns.com' first.
     Write-Host "Downloading $Name from $Url..."
     
-    $maxRetries = 3
-    $retryDelay = 5
-    $retryCount = 0
-    $downloadSuccess = $false
+    $curlArgs = @(
+        "-4",                                          # Force IPv4
+        "-L",                                          # Follow Redirects
+        "-f",                                          # Fail on HTTP errors
+        "--retry", "5",                                # Retry 5 times
+        "--retry-delay", "5",                          # Wait 5s between retries
+        "--doh-url", "https://1.1.1.1/dns-query",      # <--- USE IP DIRECTLY (Critical Fix)
+        "-o", $installer,                              # Output file
+        $Url,                                          # Target URL
+        "-A", "Mozilla/5.0"                            # User Agent
+    )
     
-    # Try to resolve DNS first
-    try {
-        $uri = [System.Uri]$Url
-        $hostname = $uri.Host
-        Write-Host "Resolving DNS for $hostname..."
-        $dnsResult = [System.Net.Dns]::GetHostAddresses($hostname)
-        Write-Host "DNS resolved successfully. IP addresses: $($dnsResult -join ', ')"
-    } catch {
-        Write-Warning "DNS resolution failed: $($_.Exception.Message)"
-        Write-Host "Will attempt download anyway..."
-    }
+    $process = Start-Process -FilePath "curl.exe" -ArgumentList $curlArgs -Wait -PassThru -NoNewWindow
     
-    while ($retryCount -lt $maxRetries -and -not $downloadSuccess) {
-        try {
-            $ProgressPreference = 'SilentlyContinue'  # Suppress progress bar
-            Invoke-WebRequest -Uri $Url -OutFile $installer -UserAgent "Mozilla/5.0" -TimeoutSec 300 -ErrorAction Stop
-            $downloadSuccess = $true
-            Write-Host "Download complete."
-        } catch {
-            $retryCount++
-            if ($retryCount -lt $maxRetries) {
-                Write-Warning "Download attempt $retryCount failed: $($_.Exception.Message)"
-                Write-Host "Retrying in $retryDelay seconds... ($($maxRetries - $retryCount) retries left)"
-                Start-Sleep -Seconds $retryDelay
-            } else {
-                Write-Warning "Failed to download $Name after $maxRetries attempts. Error: $($_.Exception.Message)"
-                return
-            }
-        }
-    }
-    
-    if (-not $downloadSuccess) {
-        Write-Warning "Failed to download $Name after all retry attempts."
+    if ($process.ExitCode -ne 0) {
+        Write-Warning "Failed to download $Name. Curl exit code: $($process.ExitCode)"
+        # Debug: Try a simple ping to check basic connectivity if this fails
+        Test-Connection -ComputerName 1.1.1.1 -Count 1 -ErrorAction SilentlyContinue | Out-Null
         return
     }
+
+    Write-Host "Download complete."
 
     # 2. Install (Silent)
     Write-Host "Installing $Name..."
