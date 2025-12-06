@@ -2,12 +2,6 @@
 
 Write-Host "--- Installing AI Editors (Cursor & Windsurf) ---"
 
-# 1. Setup Network Security & Headers (Fixes 403/Blocked Downloads)
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-$headers = @{
-    "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-}
-
 $destBase = "C:\AI_Editors"
 New-Item -ItemType Directory -Force -Path $destBase | Out-Null
 $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
@@ -22,31 +16,37 @@ function Install-Editor {
     Write-Host "Processing $Name..."
     $installer = "$env:TEMP\$Name-setup.exe"
     
-    # 2. Download with Retry Logic
-    try {
-        Write-Host "Downloading from $Url..."
-        Invoke-WebRequest -Uri $Url -OutFile $installer -Headers $headers -ErrorAction Stop
-        Write-Host "Successfully downloaded $Name."
-    } catch {
-        Write-Warning "Failed to download $Name."
-        Write-Warning "Error Details: $($_.Exception.Message)"
+    # 1. Download using curl.exe
+    # We continue to use curl as it is more robust than Invoke-WebRequest in CI environments
+    Write-Host "Downloading $Name from $Url..."
+    
+    # -4: Force IPv4 (Added stability)
+    # -L: Follow Redirects
+    # -f: Fail silently on HTTP errors
+    $curlArgs = @("-4", "-L", "-f", "-o", $installer, $Url, "-A", "Mozilla/5.0")
+    
+    $process = Start-Process -FilePath "curl.exe" -ArgumentList $curlArgs -Wait -PassThru -NoNewWindow
+    
+    if ($process.ExitCode -ne 0) {
+        Write-Warning "Failed to download $Name. Curl exit code: $($process.ExitCode)"
         return
     }
 
-    # 3. Install (Silent)
+    Write-Host "Download complete."
+
+    # 2. Install (Silent)
     Write-Host "Installing $Name..."
     try {
         Start-Process -FilePath $installer -ArgumentList "/S" -Wait -PassThru | Out-Null
+        # Give the installer a moment to release file locks before moving
+        Start-Sleep -Seconds 5
     } catch {
-        Write-Warning "Installer failed to run."
+        Write-Warning "Installer failed to run: $($_.Exception.Message)"
         return
     }
     
-    # 4. Locate Installation
-    # Cursor/Windsurf install to %LOCALAPPDATA% of the runner user
+    # 3. Locate Installation
     $localAppData = "$env:LOCALAPPDATA\Programs"
-    
-    # List of possible installation folder names
     $possiblePaths = @(
         "$localAppData\$ProcessName", 
         "$localAppData\$Name", 
@@ -58,14 +58,13 @@ function Install-Editor {
     if ($installPath) {
         Write-Host "Installation found at: $installPath"
         
-        # 5. Move to Shared Location
+        # 4. Move to Shared Location
         $sharedPath = "$destBase\$Name"
         if (Test-Path $sharedPath) { Remove-Item $sharedPath -Recurse -Force }
         
-        Write-Host "Moving files to shared folder $sharedPath..."
         Copy-Item -Path $installPath -Destination $sharedPath -Recurse -Force
 
-        # 6. Create Shortcut
+        # 5. Create Shortcut
         $WshShell = New-Object -comObject WScript.Shell
         $Shortcut = $WshShell.CreateShortcut("$publicDesktop\$Name.lnk")
         $Shortcut.TargetPath = "$sharedPath\$Name.exe"
