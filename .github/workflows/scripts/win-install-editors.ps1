@@ -2,6 +2,30 @@
 
 Write-Host "--- Installing AI Editors (Cursor & Windsurf) ---"
 
+# --- CRITICAL FIX: Force Public DNS ---
+# GitHub runners sometimes have DNS resolution issues. 
+# We explicitly set the DNS to Google (8.8.8.8) and Cloudflare (1.1.1.1).
+try {
+    Write-Host "Forcing Public DNS (8.8.8.8, 1.1.1.1)..."
+    
+    # Get the primary active network adapter
+    $adapter = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+    
+    if ($adapter) {
+        Set-DnsClientServerAddress -InterfaceIndex $adapter.InterfaceIndex -ServerAddresses "8.8.8.8","1.1.1.1" -ErrorAction Stop
+        
+        # Flush the cache to ensure we use the new servers
+        Clear-DnsClientCache
+        Write-Host "DNS updated successfully on interface '$($adapter.Name)'."
+    } else {
+        Write-Warning "No active network adapter found to configure DNS."
+    }
+} catch {
+    Write-Warning "Failed to set public DNS: $($_.Exception.Message)"
+    # We continue anyway, hoping the default DNS works now
+}
+# --------------------------------------
+
 $destBase = "C:\AI_Editors"
 New-Item -ItemType Directory -Force -Path $destBase | Out-Null
 $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
@@ -17,13 +41,13 @@ function Install-Editor {
     $installer = "$env:TEMP\$Name-setup.exe"
     
     # 1. Download using curl.exe
-    # We continue to use curl as it is more robust than Invoke-WebRequest in CI environments
     Write-Host "Downloading $Name from $Url..."
     
-    # -4: Force IPv4 (Added stability)
+    # -4: Force IPv4
     # -L: Follow Redirects
-    # -f: Fail silently on HTTP errors
-    $curlArgs = @("-4", "-L", "-f", "-o", $installer, $Url, "-A", "Mozilla/5.0")
+    # -f: Fail on HTTP errors
+    # --retry 3: Retry up to 3 times
+    $curlArgs = @("-4", "-L", "-f", "--retry", "3", "--retry-delay", "2", "-o", $installer, $Url, "-A", "Mozilla/5.0")
     
     $process = Start-Process -FilePath "curl.exe" -ArgumentList $curlArgs -Wait -PassThru -NoNewWindow
     
@@ -38,7 +62,6 @@ function Install-Editor {
     Write-Host "Installing $Name..."
     try {
         Start-Process -FilePath $installer -ArgumentList "/S" -Wait -PassThru | Out-Null
-        # Give the installer a moment to release file locks before moving
         Start-Sleep -Seconds 5
     } catch {
         Write-Warning "Installer failed to run: $($_.Exception.Message)"
