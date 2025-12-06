@@ -75,10 +75,22 @@ function Install-Editor {
 
     Write-Host "Download complete."
 
-    # 2. Install (Silent)
-    Write-Host "Installing $Name..."
+    # 2. Install (Silent with timeout)
+    Write-Host "Installing $Name (timeout: 120s)..."
     try {
-        Start-Process -FilePath $installer -ArgumentList "/S" -Wait -PassThru | Out-Null
+        # Use /VERYSILENT /NORESTART for NSIS-based installers, /S for others
+        # Run with timeout to prevent hanging
+        $installProcess = Start-Process -FilePath $installer -ArgumentList "/VERYSILENT", "/NORESTART", "/SUPPRESSMSGBOXES", "/SP-" -PassThru
+        $completed = $installProcess.WaitForExit(120000)  # 120 second timeout
+        
+        if (-not $completed) {
+            Write-Host "Installation taking too long, attempting to continue..."
+            Stop-Process -Id $installProcess.Id -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 3
+        } else {
+            Write-Host "Installer exited with code: $($installProcess.ExitCode)"
+        }
+        
         # Wait for file locks to release
         Start-Sleep -Seconds 5
     } catch {
@@ -118,9 +130,8 @@ function Install-Editor {
 }
 
 # --- Install Cursor ---
-# Primary: downloads.cursor.com (CDN), Fallback: downloader.cursor.sh (redirect service)
+# Use downloads.cursor.com CDN (most reliable)
 $cursorUrls = @(
-    "https://download.todesktop.com/230313mzl4w4u92/Cursor%20Setup%200.48.9%20-%20Build%20250207gv5l8m0hu-x64.exe",
     "https://downloads.cursor.com/production/21a2ed198584d56a91c0b996d1a09c93f8538440/win32/x64/user-setup/CursorUserSetup-x64-2.1.49.exe",
     "https://downloader.cursor.sh/windows/x64"
 )
