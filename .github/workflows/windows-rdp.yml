@@ -18,6 +18,8 @@ jobs:
 
       - name: Create RDP User with Secure Password
         shell: pwsh
+        env:
+          RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
         run: .github/workflows/scripts/win-create-user.ps1
 
       - name: Install Tailscale
