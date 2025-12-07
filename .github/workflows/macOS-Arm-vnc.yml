@@ -1,0 +1,113 @@
+name: MacOS VNC Server Arm
+
+on:
+  workflow_dispatch:
+
+jobs:
+  macos-vnc:
+    runs-on: macos-latest # ARM64 (Apple Silicon)
+    timeout-minutes: 3600
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Note: macOS runners come pre-installed with many tools, including Homebrew.
+      # The Ubuntu-specific scripts (Update APT, Prevent auto-start, systemctl hooks,
+      # precreate users, install desktop/VNC, validate, re-enable, restore) are removed
+      # as they are not applicable to macOS.
+
+      - name: Configure and Start macOS VNC Server
+        run: |
+          # Set VNC password using openssl (more robust on macOS)
+          PASS=$(openssl rand -hex 8)
+          if [ -z "$PASS" ]; then
+            echo "Error: Failed to generate password"
+            exit 1
+          fi
+          echo "Generated password length: ${#PASS}"
+          echo "VNC_PASSWORD=$PASS" >> "$GITHUB_ENV"
+          
+          # Install Rosetta 2 for x86 app compatibility (Vine Server may need it)
+          softwareupdate --install-rosetta --agree-to-license || true
+          
+          # Install Vine Server (OSXvnc) to bypass TCC issues with built-in Screen Sharing
+          brew install --cask vine-server
+          
+          # Create a dedicated VNC user 'vncuser'
+          sudo dscl . -create /Users/vncuser
+          sudo dscl . -create /Users/vncuser UserShell /bin/bash
+          sudo dscl . -create /Users/vncuser RealName "VNC User"
+          sudo dscl . -create /Users/vncuser UniqueID 1001
+          sudo dscl . -create /Users/vncuser PrimaryGroupID 80
+          sudo dscl . -create /Users/vncuser NFSHomeDirectory /Users/vncuser
+          sudo dscl . -passwd /Users/vncuser "$PASS"
+          sudo createhomedir -c -u vncuser > /dev/null
+          
+          # Start Vine Server
+          # Note: Vine Server runs as a user application, so we run it as the runner user
+          # It listens on port 5900 by default
+          echo "Starting Vine Server..."
+          
+          # Generate VNC password file
+          # storepasswd is usually in the same directory as OSXvnc-server
+          /Applications/Vine\ Server.app/Contents/MacOS/storepasswd "$PASS" /Users/runner/.vncpasswd
+          
+          # Start the server with the password file
+          /Applications/Vine\ Server.app/Contents/MacOS/OSXvnc-server -rfbport 5900 -desktop "GitHub Runner" -rfbauth /Users/runner/.vncpasswd -nowait &
+          
+          # Confirmation message
+          echo "Vine Server (OSXvnc) started on port 5900"
+
+      - name: Install Tailscale
+        # Use Homebrew to install Tailscale on macOS
+        run: brew install tailscale
+
+      - name: Start tailscaled (manual)
+        run: |
+          # Find the installation prefix for Tailscale
+          PREFIX=$(brew --prefix tailscale)
+          # Start tailscaled (it might be in bin or sbin)
+          if [ -f "$PREFIX/sbin/tailscaled" ]; then
+            sudo "$PREFIX/sbin/tailscaled" >/tmp/tailscaled.log 2>&1 &
+          elif [ -f "$PREFIX/bin/tailscaled" ]; then
+            sudo "$PREFIX/bin/tailscaled" >/tmp/tailscaled.log 2>&1 &
+          else
+            # Fallback to searching in standard locations
+            sudo tailscaled >/tmp/tailscaled.log 2>&1 &
+          fi
+          disown
+          sleep 5
+
+      - name: Connect to Tailscale
+        run: |
+          # Connect using the tailscale CLI
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${GITHUB_RUN_ID}
+          echo "TAILSCALE_IP=$(tailscale ip -4)" >> "$GITHUB_ENV"
+
+      - name: Verify VNC Connection
+        run: |
+          echo "Tailscale IP: $TAILSCALE_IP"
+          
+          echo "Checking for listening ports..."
+          netstat -an | grep 5900 || echo "Port 5900 not found in netstat"
+          
+          echo "Checking localhost connection..."
+          nc -z -v 127.0.0.1 5900 || echo "Localhost connection failed"
+          
+          echo "Checking Tailscale IP connection..."
+          # Use 'nc' (netcat) to verify the VNC port 5900 is open on the runner's IP
+          nc -z -v "$TAILSCALE_IP" 5900
+
+      - name: Keep Connection Alive
+        run: |
+          echo "=== VNC ACCESS INFORMATION ==="
+          echo "Address: ${TAILSCALE_IP}:5900"
+          echo "Username: (Leave Empty or use 'runner')"
+          echo "Password: ${VNC_PASSWORD}"
+          echo "Desktop: Vine Server (OSXvnc)"
+          echo "=============================="
+          while true; do
+            echo "[$(date)] VNC Active - Cancel workflow to terminate"
+            sleep 300
+          done
