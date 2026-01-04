@@ -113,17 +113,20 @@ jobs:
           sleep 3
           echo "Jupyter Lab started on port 8888"
 
-      - name: Install code-server
+      - name: Install and Configure code-server
         run: |
           # Install code-server
           curl -fsSL https://code-server.dev/install.sh | sh
+          
+          # Set effective password
+          PASS="${VNC_PASSWORD_SECRET:-codeserver}"
           
           # Create code-server config
           mkdir -p ~/.config/code-server
           cat > ~/.config/code-server/config.yaml <<EOF
           bind-addr: 0.0.0.0:8080
           auth: password
-          password: ${VNC_PASSWORD_SECRET:-codeserver}
+          password: $PASS
           cert: false
           EOF
           
@@ -135,22 +138,24 @@ jobs:
 
       - name: Start code-server
         run: |
-          # Start code-server in background
-          nohup code-server --bind-addr 0.0.0.0:8080 > /tmp/code-server.log 2>&1 &
+          # Start code-server in background with explicit password
+          export PASSWORD="${VNC_PASSWORD_SECRET:-codeserver}"
+          nohup code-server --bind-addr 0.0.0.0:8080 --auth password > /tmp/code-server.log 2>&1 &
           echo $! > /tmp/code-server.pid
           sleep 3
-          echo "code-server started on port 8080"
+          echo "code-server started on port 8080 with password authentication"
 
       - name: Configure VNC
         run: |
           mkdir -p ~/.vnc
           touch ~/.Xauthority
           chmod 600 ~/.Xauthority
-          if [ -n "$VNC_PASSWORD_SECRET" ]; then
-            echo "$VNC_PASSWORD_SECRET" | vncpasswd -f > ~/.vnc/passwd
-          else
-            echo "vncpassword" | vncpasswd -f > ~/.vnc/passwd
-          fi
+          
+          # Use the same password logic as code-server
+          PASS="${VNC_PASSWORD_SECRET:-vncpassword}"
+          
+          # Note: vncpasswd might truncate to 8 chars on some systems
+          echo "$PASS" | vncpasswd -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
           cat > ~/.vnc/xstartup << 'EOF'
           #!/bin/bash
@@ -273,13 +278,13 @@ jobs:
           echo "=== CONNECTION INFO ===" > connection-info.txt
           echo "" >> connection-info.txt
           
+          # Effective passwords used in this run
+          VNC_PASS="${VNC_PASSWORD_SECRET:-vncpassword}"
+          CODE_PASS="${VNC_PASSWORD_SECRET:-codeserver}"
+          
           # VNC Info
           echo "--- VNC Desktop ---" >> connection-info.txt
-          if [ -n "$VNC_PASSWORD_SECRET" ]; then
-            echo "VNC Password: $VNC_PASSWORD_SECRET" >> connection-info.txt
-          else
-            echo "VNC Password: vncpassword" >> connection-info.txt
-          fi
+          echo "VNC Password: $VNC_PASS" >> connection-info.txt
           echo "VNC Direct Address: $PUBLIC_IP:5900" >> connection-info.txt
           if [ -f ngrok.txt ]; then
             echo "VNC Ngrok Tunnel: $(cat ngrok.txt)" >> connection-info.txt
@@ -291,11 +296,7 @@ jobs:
           
           # Code-server Info
           echo "--- Code-Server (VS Code in Browser) ---" >> connection-info.txt
-          if [ -n "$VNC_PASSWORD_SECRET" ]; then
-            echo "Code-Server Password: $VNC_PASSWORD_SECRET" >> connection-info.txt
-          else
-            echo "Code-Server Password: codeserver" >> connection-info.txt
-          fi
+          echo "Code-Server Password: $CODE_PASS" >> connection-info.txt
           echo "Code-Server Direct: http://$PUBLIC_IP:8080" >> connection-info.txt
           if [ -f ngrok-code.txt ]; then
             echo "Code-Server Ngrok: $(cat ngrok-code.txt)" >> connection-info.txt
