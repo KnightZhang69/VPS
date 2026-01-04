@@ -85,8 +85,46 @@ graph TD
         - **Ngrok:** If the `NGROK_AUTH_TOKEN` secret is present, it will create a public TCP tunnel to the VNC port.
     5.  Connection details (IP addresses, tunnel URL, password) are saved as a workflow artifact named `vnc-connection-info`.
     6.  A final loop keeps the runner active.
-
-### 3. Windows RDP Server (`windows-rdp.yml`)
+ 
+ ### 3. Ubuntu Code Server (`ubuntu-code-server.yml`)
+ 
+ This workflow provisions an Ubuntu ARM64 runner with a pre-installed development environment, including code-server (VS Code in the browser), Jupyter Lab, Miniconda, and Node.js. It's designed for heavy-duty development without needing a full VNC desktop (though VNC is also provided).
+ 
+ **Mermaid Diagram:**
+ ```mermaid
+ graph TD
+     A[Start: Manual Trigger] --> B{Runner: ubuntu-24.04-arm};
+     B --> C[Checkout Code & Cache APT];
+     C --> D[Install Node.js, Miniconda & Jupyter];
+     D --> E[Install & Configure code-server];
+     E --> F[Start code-server & Jupyter Lab];
+     F --> G{Configure Connectivity};
+     G -- Tailscale --> H[Setup Tailscale];
+     G -- Ngrok --> I[Setup Ngrok Tunnels];
+     H --> J[Output Multi-Service Info];
+     I --> J;
+     J --> K[Keep Session Alive];
+     K --> L[End: Manual Cancellation];
+ ```
+ 
+ **Key Features:**
+ 
+ - **Platform:** `ubuntu-24.04-arm`
+ - **Services:**
+     - **code-server:** VS Code interface on port `8080`.
+     - **Jupyter Lab:** Modern notebook interface on port `8888`.
+     - **VNC Desktop:** XFCE desktop environment on port `5900`.
+ - **Pre-installed Tools:**
+     - **Node.js:** LTS version with `yarn`, `pnpm`.
+     - **Python/Conda:** Miniconda with `numpy`, `pandas`, `scipy`, `matplotlib`, `scikit-learn`.
+     - **VS Code Extensions:** Python, ESLint, Prettier, Tailwind CSS.
+ - **Process:**
+     1. Starts on an ARM64 runner for better performance and efficiency.
+     2. Sets up multiple development environments (Web, Data Science, System).
+     3. **Connectivity:** Automatically maps three different tunnels via Ngrok or allows access via Tailscale.
+     4. Connection details for all services (URLs and passwords) are saved as a workflow artifact named `vnc-connection-info`.
+ 
+ ### 4. Windows RDP Server (`windows-rdp.yml`)
 
 This workflow provisions a Windows runner and makes it accessible via a Remote Desktop Protocol (RDP) client.
 
