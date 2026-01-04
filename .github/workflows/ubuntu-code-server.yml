@@ -1,0 +1,345 @@
+name: Ubuntu Code server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ubuntu-vnc:
+    runs-on: ubuntu-24.04-arm   # ARM64 runner
+    timeout-minutes: 360   # Correct max runtime
+    env:
+      VNC_PASSWORD_SECRET: ${{ secrets.VNC_PASSWORD }}
+      TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+      NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache APT packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/apt-packages.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+
+      - name: Add ngrok repository
+        run: |
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+
+      - name: Update APT and install dependencies
+        run: |
+          sudo apt-get update
+          xargs -a .github/workflows/apt-packages.txt sudo apt-get install -y
+
+      - name: Install Node.js via nvm
+        run: |
+          # Install nvm
+          curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          
+          # Install latest LTS Node.js
+          nvm install --lts
+          nvm use --lts
+          nvm alias default node
+          
+          # Install common global packages
+          npm install -g yarn pnpm typescript ts-node nodemon
+
+      - name: Install Miniconda
+        run: |
+          # Download and install Miniconda for ARM64
+          wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh -O /tmp/miniconda.sh
+          bash /tmp/miniconda.sh -b -p $HOME/miniconda
+          rm /tmp/miniconda.sh
+          
+          # Initialize conda
+          eval "$($HOME/miniconda/bin/conda shell.bash hook)"
+          conda init bash
+          
+          # Add to PATH for subsequent steps
+          echo "$HOME/miniconda/bin" >> $GITHUB_PATH
+          
+          # Update conda and install common packages
+          conda update -n base -c defaults conda -y
+          conda install -y python=3.11 numpy pandas scipy matplotlib scikit-learn
+          
+          # Install pip-based tools
+          pip install --upgrade pip setuptools wheel
+          pip install virtualenv pylint black flake8 mypy pytest ipython
+
+      - name: Setup Jupyter Notebook
+        run: |
+          eval "$($HOME/miniconda/bin/conda shell.bash hook)"
+          
+          # Install Jupyter packages
+          conda install -y jupyter jupyterlab notebook ipykernel
+          pip install jupyterthemes nbconvert
+          
+          # Generate Jupyter config
+          jupyter notebook --generate-config
+          
+          # Configure Jupyter for remote access
+          cat >> ~/.jupyter/jupyter_notebook_config.py <<EOF
+          c.NotebookApp.ip = '0.0.0.0'
+          c.NotebookApp.port = 8888
+          c.NotebookApp.open_browser = False
+          c.NotebookApp.allow_root = True
+          c.NotebookApp.token = ''
+          c.NotebookApp.password = ''
+          c.NotebookApp.allow_origin = '*'
+          c.ServerApp.ip = '0.0.0.0'
+          c.ServerApp.port = 8888
+          c.ServerApp.open_browser = False
+          c.ServerApp.allow_root = True
+          c.ServerApp.token = ''
+          c.ServerApp.password = ''
+          c.ServerApp.allow_origin = '*'
+          EOF
+          
+          # Create a working directory for notebooks
+          mkdir -p ~/notebooks
+
+      - name: Start Jupyter Notebook
+        run: |
+          eval "$($HOME/miniconda/bin/conda shell.bash hook)"
+          
+          # Start Jupyter Lab in background
+          nohup jupyter lab --no-browser --port=8888 --ip=0.0.0.0 --notebook-dir=~/notebooks > /tmp/jupyter.log 2>&1 &
+          echo $! > /tmp/jupyter.pid
+          sleep 3
+          echo "Jupyter Lab started on port 8888"
+
+      - name: Install code-server
+        run: |
+          # Install code-server
+          curl -fsSL https://code-server.dev/install.sh | sh
+          
+          # Create code-server config
+          mkdir -p ~/.config/code-server
+          cat > ~/.config/code-server/config.yaml <<EOF
+          bind-addr: 0.0.0.0:8080
+          auth: password
+          password: ${VNC_PASSWORD_SECRET:-codeserver}
+          cert: false
+          EOF
+          
+          # Install useful VS Code extensions
+          code-server --install-extension ms-python.python
+          code-server --install-extension dbaeumer.vscode-eslint
+          code-server --install-extension esbenp.prettier-vscode
+          code-server --install-extension bradlc.vscode-tailwindcss
+
+      - name: Start code-server
+        run: |
+          # Start code-server in background
+          nohup code-server --bind-addr 0.0.0.0:8080 > /tmp/code-server.log 2>&1 &
+          echo $! > /tmp/code-server.pid
+          sleep 3
+          echo "code-server started on port 8080"
+
+      - name: Configure VNC
+        run: |
+          mkdir -p ~/.vnc
+          touch ~/.Xauthority
+          chmod 600 ~/.Xauthority
+          if [ -n "$VNC_PASSWORD_SECRET" ]; then
+            echo "$VNC_PASSWORD_SECRET" | vncpasswd -f > ~/.vnc/passwd
+          else
+            echo "vncpassword" | vncpasswd -f > ~/.vnc/passwd
+          fi
+          chmod 600 ~/.vnc/passwd
+          cat > ~/.vnc/xstartup << 'EOF'
+          #!/bin/bash
+          unset SESSION_MANAGER
+          unset DBUS_SESSION_BUS_ADDRESS
+          exec startxfce4
+          EOF
+          chmod +x ~/.vnc/xstartup
+          vncserver -kill :0 || true
+          vncserver :0 -geometry 1920x1200 -depth 24 -SecurityTypes VncAuth -PasswordFile ~/.vnc/passwd -localhost no
+          
+          # Fix permissions for Snap apps
+          export DISPLAY=:0
+          xhost +
+          
+          # Create Chromium Desktop Shortcut
+          mkdir -p ~/Desktop
+          mkdir -p ~/.local/share/applications
+          cat > ~/Desktop/chromium.desktop <<EOF
+          [Desktop Entry]
+          Version=1.0
+          Name=Chromium Web Browser
+          Comment=Access the Internet
+          Exec=bash -c "export DISPLAY=:0 && chromium-browser --no-sandbox"
+          Icon=chromium-browser
+          Terminal=false
+          Type=Application
+          Categories=Network;WebBrowser;
+          EOF
+          chmod +x ~/Desktop/chromium.desktop
+          cp ~/Desktop/chromium.desktop ~/.local/share/applications/
+
+      - name: Install Tailscale (optional)
+        if: ${{ env.TAILSCALE_AUTH_KEY != '' }}
+        run: curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Start tailscaled (optional)
+        if: ${{ env.TAILSCALE_AUTH_KEY != '' }}
+        run: |
+          sudo mkdir -p /var/run
+          sudo nohup tailscaled >/tmp/tailscaled.log 2>&1 &
+          sleep 3
+
+      - name: Connect to Tailscale (optional)
+        if: ${{ env.TAILSCALE_AUTH_KEY != '' }}
+        run: |
+          sudo tailscale up --authkey="$TAILSCALE_AUTH_KEY" --hostname=gh-runner-${GITHUB_RUN_ID}
+          echo "TAILSCALE_IP=$(tailscale ip -4)" >> "$GITHUB_ENV"
+
+      - name: Verify Tailscale VNC (optional)
+        if: ${{ env.TAILSCALE_IP != '' }}
+        run: nc -vz "$TAILSCALE_IP" 5900
+
+      - name: Start Ngrok tunnels (optional)
+        env:
+          NGROK_AUTH_TOKEN_CHECK: ${{ env.NGROK_AUTH_TOKEN }}
+        if: ${{ env.NGROK_AUTH_TOKEN_CHECK != '' }}
+        run: |
+          ngrok authtoken "$NGROK_AUTH_TOKEN"
+          
+          # Create ngrok config for multiple tunnels
+          mkdir -p ~/.ngrok2
+          cat > ~/.ngrok2/ngrok.yml <<EOF
+          version: "2"
+          authtoken: $NGROK_AUTH_TOKEN
+          tunnels:
+            vnc:
+              addr: 5900
+              proto: tcp
+            code-server:
+              addr: 8080
+              proto: http
+            jupyter:
+              addr: 8888
+              proto: http
+          EOF
+          
+          nohup ngrok start --all --config ~/.ngrok2/ngrok.yml >/tmp/ngrok.log 2>&1 &
+          NGROK_PID=$!
+          echo $NGROK_PID > ngrok.pid
+          
+          # Wait for tunnels to be established
+          for i in {1..20}; do
+            VNC_TUNNEL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[] | select(.name=="vnc") | .public_url')
+            CODE_TUNNEL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[] | select(.name=="code-server") | .public_url')
+            JUPYTER_TUNNEL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[] | select(.name=="jupyter") | .public_url')
+            if [ -n "$VNC_TUNNEL" ] && [ "$VNC_TUNNEL" != "null" ]; then
+              echo $VNC_TUNNEL > ngrok.txt
+              echo "NGROK_TUNNEL=$VNC_TUNNEL" >> "$GITHUB_ENV"
+            fi
+            if [ -n "$CODE_TUNNEL" ] && [ "$CODE_TUNNEL" != "null" ]; then
+              echo $CODE_TUNNEL > ngrok-code.txt
+              echo "NGROK_CODE_TUNNEL=$CODE_TUNNEL" >> "$GITHUB_ENV"
+            fi
+            if [ -n "$JUPYTER_TUNNEL" ] && [ "$JUPYTER_TUNNEL" != "null" ]; then
+              echo $JUPYTER_TUNNEL > ngrok-jupyter.txt
+              echo "NGROK_JUPYTER_TUNNEL=$JUPYTER_TUNNEL" >> "$GITHUB_ENV"
+            fi
+            if [ -n "$VNC_TUNNEL" ] && [ -n "$CODE_TUNNEL" ] && [ -n "$JUPYTER_TUNNEL" ]; then
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Check Ngrok tunnel reachability (optional)
+        if: ${{ env.NGROK_TUNNEL != '' }}
+        run: |
+          HOSTPORT=${NGROK_TUNNEL#tcp://}
+          HOST=${HOSTPORT%:*}
+          PORT=${HOSTPORT##*:}
+          if nc -z -w 5 "$HOST" "$PORT"; then
+            echo "Ngrok tunnel is reachable from the runner"
+          else
+            echo "WARNING: Unable to reach ngrok tunnel from the runner" >&2
+          fi
+
+      - name: Save connection info
+        run: |
+          PUBLIC_IP=$(curl -s ifconfig.me)
+          echo "=== CONNECTION INFO ===" > connection-info.txt
+          echo "" >> connection-info.txt
+          
+          # VNC Info
+          echo "--- VNC Desktop ---" >> connection-info.txt
+          if [ -n "$VNC_PASSWORD_SECRET" ]; then
+            echo "VNC Password: $VNC_PASSWORD_SECRET" >> connection-info.txt
+          else
+            echo "VNC Password: vncpassword" >> connection-info.txt
+          fi
+          echo "VNC Direct Address: $PUBLIC_IP:5900" >> connection-info.txt
+          if [ -f ngrok.txt ]; then
+            echo "VNC Ngrok Tunnel: $(cat ngrok.txt)" >> connection-info.txt
+          fi
+          if [ -n "$TAILSCALE_IP" ]; then
+            echo "VNC Tailscale: ${TAILSCALE_IP}:5900" >> connection-info.txt
+          fi
+          echo "" >> connection-info.txt
+          
+          # Code-server Info
+          echo "--- Code-Server (VS Code in Browser) ---" >> connection-info.txt
+          if [ -n "$VNC_PASSWORD_SECRET" ]; then
+            echo "Code-Server Password: $VNC_PASSWORD_SECRET" >> connection-info.txt
+          else
+            echo "Code-Server Password: codeserver" >> connection-info.txt
+          fi
+          echo "Code-Server Direct: http://$PUBLIC_IP:8080" >> connection-info.txt
+          if [ -f ngrok-code.txt ]; then
+            echo "Code-Server Ngrok: $(cat ngrok-code.txt)" >> connection-info.txt
+          fi
+          if [ -n "$TAILSCALE_IP" ]; then
+            echo "Code-Server Tailscale: http://${TAILSCALE_IP}:8080" >> connection-info.txt
+          fi
+          echo "" >> connection-info.txt
+          
+          # Jupyter Lab Info
+          echo "--- Jupyter Lab (Notebooks) ---" >> connection-info.txt
+          echo "Jupyter Direct: http://$PUBLIC_IP:8888" >> connection-info.txt
+          if [ -f ngrok-jupyter.txt ]; then
+            echo "Jupyter Ngrok: $(cat ngrok-jupyter.txt)" >> connection-info.txt
+          fi
+          if [ -n "$TAILSCALE_IP" ]; then
+            echo "Jupyter Tailscale: http://${TAILSCALE_IP}:8888" >> connection-info.txt
+          fi
+          echo "Notebooks Directory: ~/notebooks" >> connection-info.txt
+          echo "" >> connection-info.txt
+          
+          # Preinstalled tools info
+          echo "--- Preinstalled Tools ---" >> connection-info.txt
+          echo "Node.js: LTS (via nvm)" >> connection-info.txt
+          echo "Python: 3.11 (Miniconda)" >> connection-info.txt
+          echo "Conda packages: numpy, pandas, scipy, matplotlib, scikit-learn" >> connection-info.txt
+          echo "Global npm packages: yarn, pnpm, typescript, ts-node, nodemon" >> connection-info.txt
+          echo "Python packages: pylint, black, flake8, mypy, pytest, ipython" >> connection-info.txt
+          echo "Jupyter: JupyterLab, Notebook, ipykernel" >> connection-info.txt
+          echo "" >> connection-info.txt
+          
+          echo "WARNING: Direct addresses might not be accessible due to firewall restrictions." >> connection-info.txt
+          echo "Use Ngrok tunnels for reliable connections." >> connection-info.txt
+
+      - name: Upload connection info artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnc-connection-info
+          path: connection-info.txt
+
+      - name: Keep alive with cleanup trap
+        run: |
+          trap 'vncserver -kill :0; if [ -f /tmp/code-server.pid ]; then kill $(cat /tmp/code-server.pid) 2>/dev/null || true; fi; if [ -f /tmp/jupyter.pid ]; then kill $(cat /tmp/jupyter.pid) 2>/dev/null || true; fi; if [ -f ngrok.pid ]; then kill $(cat ngrok.pid) 2>/dev/null || true; fi; sudo pkill tailscaled 2>/dev/null || true; sudo pkill tailscale 2>/dev/null || true' EXIT
+          while true; do
+            echo "[$(date)] VNC, Code-Server & Jupyter Active - Cancel workflow to terminate"
+            sleep 300
+          done
