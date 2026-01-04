@@ -32,6 +32,14 @@ Connect your local machine to Tailscale, then use the runner's Tailscale IP:
 - **Jupyter:** `http://<tailscale-ip>:8888`
 - **VNC:** `<tailscale-ip>:5900`
 
+### Method 3: SSH (Command Line)
+Directly connect to the terminal via Tailscale:
+```bash
+ssh runner@<tailscale-ip>
+```
+- **User:** `runner`
+- **Password:** Same as your VNC/Code-Server password (`vncpassword` by default).
+
 ## Pre-installed Software
 
 ### Python & Data Science

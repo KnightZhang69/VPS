@@ -34,6 +34,20 @@ jobs:
           sudo apt-get update
           xargs -a .github/workflows/apt-packages.txt sudo apt-get install -y
 
+      - name: Setup SSH Access
+        run: |
+          # Set password for runner user
+          PASS="${VNC_PASSWORD_SECRET:-vncpassword}"
+          echo "runner:$PASS" | sudo chpasswd
+          
+          # Ensure SSH is running and configured
+          sudo apt-get install -y openssh-server
+          sudo systemctl start ssh
+          
+          # Allow password authentication if it's disabled
+          sudo sed -i 's/^#*PasswordAuthentication .*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sudo systemctl reload ssh
+
       - name: Install Node.js via nvm
         run: |
           # Install nvm
@@ -303,6 +317,16 @@ jobs:
           fi
           if [ -n "$TAILSCALE_IP" ]; then
             echo "Code-Server Tailscale: http://${TAILSCALE_IP}:8080" >> connection-info.txt
+          fi
+          echo "" >> connection-info.txt
+          
+          # SSH Info
+          echo "--- SSH Access ---" >> connection-info.txt
+          echo "User: runner" >> connection-info.txt
+          echo "SSH Password: $VNC_PASS" >> connection-info.txt
+          echo "Direct: ssh runner@$PUBLIC_IP" >> connection-info.txt
+          if [ -n "$TAILSCALE_IP" ]; then
+            echo "Tailscale: ssh runner@$TAILSCALE_IP" >> connection-info.txt
           fi
           echo "" >> connection-info.txt
           
