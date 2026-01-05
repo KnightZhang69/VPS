@@ -45,19 +45,33 @@ jobs:
         env:
           RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
         run: |
-          # Download code-server from GitHub releases
-          $version = "4.96.4"
-          $url = "https://github.com/coder/code-server/releases/download/v$version/code-server-$version-windows-amd64.zip"
-          
-          Write-Host "Downloading code-server v$version..."
+          # Get latest code-server release version from GitHub API
           $ProgressPreference = 'SilentlyContinue'
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/coder/code-server/releases/latest"
+          $version = $release.tag_name -replace '^v', ''
+          
+          # Find Windows AMD64 asset
+          $asset = $release.assets | Where-Object { $_.name -like "*windows-amd64.zip" } | Select-Object -First 1
+          
+          if (-not $asset) {
+            Write-Host "No Windows build found for v$version, trying v4.95.3..."
+            $version = "4.95.3"
+            $url = "https://github.com/coder/code-server/releases/download/v$version/code-server-$version-windows-amd64.zip"
+          } else {
+            $url = $asset.browser_download_url
+          }
+          
+          Write-Host "Downloading code-server v$version from $url..."
           Invoke-WebRequest -Uri $url -OutFile code-server.zip
           
           # Extract to Program Files
           $installDir = "$env:ProgramFiles\code-server"
           Expand-Archive -Path code-server.zip -DestinationPath $env:TEMP\code-server-extract -Force
           New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-          Move-Item -Path "$env:TEMP\code-server-extract\code-server-$version-windows-amd64\*" -Destination $installDir -Force
+          
+          # Find extracted folder (version may vary)
+          $extractedFolder = Get-ChildItem -Path "$env:TEMP\code-server-extract" -Directory | Select-Object -First 1
+          Move-Item -Path "$($extractedFolder.FullName)\*" -Destination $installDir -Force
           Remove-Item code-server.zip
           Remove-Item "$env:TEMP\code-server-extract" -Recurse -Force
           
