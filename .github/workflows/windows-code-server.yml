@@ -45,11 +45,24 @@ jobs:
         env:
           RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
         run: |
-          # Install code-server via Chocolatey (most reliable on Windows)
-          choco install code-server -y
+          # Download code-server from GitHub releases
+          $version = "4.96.4"
+          $url = "https://github.com/coder/code-server/releases/download/v$version/code-server-$version-windows-amd64.zip"
           
-          # Refresh environment to get code-server in PATH
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          Write-Host "Downloading code-server v$version..."
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri $url -OutFile code-server.zip
+          
+          # Extract to Program Files
+          $installDir = "$env:ProgramFiles\code-server"
+          Expand-Archive -Path code-server.zip -DestinationPath $env:TEMP\code-server-extract -Force
+          New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+          Move-Item -Path "$env:TEMP\code-server-extract\code-server-$version-windows-amd64\*" -Destination $installDir -Force
+          Remove-Item code-server.zip
+          Remove-Item "$env:TEMP\code-server-extract" -Recurse -Force
+          
+          # Add to PATH for this session
+          $env:Path = "$installDir\bin;$env:Path"
           
           # Create code-server config directory
           $configDir = "$env:USERPROFILE\.config\code-server"
@@ -63,29 +76,30 @@ jobs:
           $configContent = "bind-addr: 0.0.0.0:8080`nauth: password`npassword: $password`ncert: false"
           $configContent | Out-File -FilePath "$configDir\config.yaml" -Encoding utf8 -NoNewline
           
-          # Install VS Code extensions
-          code-server --install-extension ms-python.python
-          code-server --install-extension dbaeumer.vscode-eslint
-          code-server --install-extension esbenp.prettier-vscode
-          code-server --install-extension bradlc.vscode-tailwindcss
-          
           # Use official VS Code Marketplace instead of Open VSX (enables GitHub Copilot)
           $env:EXTENSIONS_GALLERY = '{"serviceUrl": "https://marketplace.visualstudio.com/_apis/public/gallery", "cacheUrl": "https://vscode.blob.core.windows.net/gallery/index", "itemUrl": "https://marketplace.visualstudio.com/items"}'
           
+          # Install VS Code extensions
+          & "$installDir\bin\code-server.cmd" --install-extension ms-python.python
+          & "$installDir\bin\code-server.cmd" --install-extension dbaeumer.vscode-eslint
+          & "$installDir\bin\code-server.cmd" --install-extension esbenp.prettier-vscode
+          & "$installDir\bin\code-server.cmd" --install-extension bradlc.vscode-tailwindcss
+          
           # Install GitHub Copilot (now available via VS Code Marketplace)
-          code-server --install-extension GitHub.copilot
-          code-server --install-extension GitHub.copilot-chat
+          & "$installDir\bin\code-server.cmd" --install-extension GitHub.copilot
+          & "$installDir\bin\code-server.cmd" --install-extension GitHub.copilot-chat
           
           # Install Continue.dev as additional open-source AI coding assistant
-          code-server --install-extension continue.continue
+          & "$installDir\bin\code-server.cmd" --install-extension continue.continue
 
       - name: Start code-server
         shell: pwsh
         env:
           RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
         run: |
-          # Refresh PATH
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          # Set install directory
+          $installDir = "$env:ProgramFiles\code-server"
+          $env:Path = "$installDir\bin;$env:Path"
           
           # Use official VS Code Marketplace instead of Open VSX (enables GitHub Copilot)
           $env:EXTENSIONS_GALLERY = '{"serviceUrl": "https://marketplace.visualstudio.com/_apis/public/gallery", "cacheUrl": "https://vscode.blob.core.windows.net/gallery/index", "itemUrl": "https://marketplace.visualstudio.com/items"}'
@@ -94,11 +108,9 @@ jobs:
           $password = $env:RDP_PASSWORD
           if (-not $password) { $password = "codeserver" }
           
-          # Start code-server in background with EXTENSIONS_GALLERY env var
-          Start-Job -ScriptBlock {
-            $env:EXTENSIONS_GALLERY = '{"serviceUrl": "https://marketplace.visualstudio.com/_apis/public/gallery", "cacheUrl": "https://vscode.blob.core.windows.net/gallery/index", "itemUrl": "https://marketplace.visualstudio.com/items"}'
-            code-server --bind-addr 0.0.0.0:8080
-          }
+          # Start code-server in background
+          $codeServerCmd = "$installDir\bin\code-server.cmd"
+          Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "set EXTENSIONS_GALLERY={`"serviceUrl`": `"https://marketplace.visualstudio.com/_apis/public/gallery`", `"cacheUrl`": `"https://vscode.blob.core.windows.net/gallery/index`", `"itemUrl`": `"https://marketplace.visualstudio.com/items`"} && `"$codeServerCmd`" --bind-addr 0.0.0.0:8080" -WindowStyle Hidden
           Start-Sleep -Seconds 5
           
           # Display connection info
