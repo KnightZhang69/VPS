@@ -43,7 +43,22 @@ jobs:
       - name: Configure VS Code Extensions and Settings
         shell: pwsh
         run: |
-          # Install extensions
+          # Copy VS Code config from repository
+          $vscodeDir = "$env:USERPROFILE\.vscode"
+          New-Item -ItemType Directory -Force -Path $vscodeDir | Out-Null
+          
+          # Copy settings and extensions from repo
+          if (Test-Path ".vscode\settings.json") {
+            Copy-Item ".vscode\settings.json" "$vscodeDir\settings.json" -Force
+            Write-Host "Copied settings.json"
+          }
+          
+          if (Test-Path ".vscode\extensions.json") {
+            Copy-Item ".vscode\extensions.json" "$vscodeDir\extensions.json" -Force
+            Write-Host "Copied extensions.json"
+          }
+          
+          # Install extensions from list
           $extensions = @(
             "GitHub.copilot",
             "GitHub.copilot-chat", 
@@ -58,30 +73,9 @@ jobs:
             Write-Host "Installing extension: $ext"
             & "${env:ProgramFiles}\Microsoft VS Code\bin\code.cmd" --install-extension $ext
           }
-
-          # Configure settings
-          $settingsPath = "$env:APPDATA\Code\User\settings.json"
-          $settings = @{
-            "github.copilot.enable" = @{
-                "asterisk" = $true
-                "inlineSuggest" = @{
-                    "enable" = $true
-                }
-            }
-            "editor.fontSize" = 14
-            "editor.fontFamily" = "'Fira Code', 'Courier New', monospace"
-            "workbench.colorTheme" = "Default Dark+"
-            "python.defaultInterpreterPath" = "python"
-            "extensions.autoUpdate" = $false
-          }
-
-          # Ensure directory exists
-          New-Item -ItemType Directory -Force -Path (Split-Path $settingsPath) | Out-Null
-          
-          # Write settings
-          $settings | ConvertTo-Json -Depth 10 | Out-File -FilePath $settingsPath -Encoding utf8
           
           Write-Host "VS Code configuration completed!"
+          Write-Host "Settings Sync enabled - sign in to restore your configuration"
 
       - name: Start VS Code Remote Tunnel (Web IDE)
         shell: pwsh
