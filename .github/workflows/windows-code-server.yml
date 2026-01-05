@@ -1,0 +1,103 @@
+name: Windows code-server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  secure-rdp:
+    runs-on: windows-latest
+    timeout-minutes: 3600
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure Core RDP Settings
+        shell: pwsh
+        run: .github/workflows/scripts/win-configure-rdp.ps1
+
+      - name: Create RDP User with Secure Password
+        shell: pwsh
+        env:
+          RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+        run: .github/workflows/scripts/win-create-user.ps1
+
+      - name: Install Tailscale
+        shell: pwsh
+        run: .github/workflows/scripts/win-install-tailscale.ps1
+
+      - name: Establish Tailscale Connection
+        shell: pwsh
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: .github/workflows/scripts/win-establish-ts.ps1
+
+      - name: Verify RDP Accessibility
+        shell: pwsh
+        run: .github/workflows/scripts/win-verify-rdp.ps1
+        
+      - name: Install Visual Studio Code
+        shell: pwsh
+        run: choco install vscode -y
+
+      - name: Install and Configure code-server
+        shell: pwsh
+        run: |
+          # Install code-server
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri https://github.com/coder/code-server/releases/download/v4.24.0/code-server-4.24.0-windows-amd64.zip -OutFile code-server.zip
+          Expand-Archive -Path code-server.zip -DestinationPath .\code-server -Force
+          Remove-Item code-server.zip
+          
+          # Create code-server config directory
+          $configDir = "$env:USERPROFILE\AppData\Roaming\code-server"
+          New-Item -ItemType Directory -Force -Path $configDir | Out-Null
+          
+          # Set password
+          $password = $env:RDP_PASSWORD
+          if (-not $password) { $password = "codeserver" }
+          
+          # Create config file
+          @"
+          bind-addr: 0.0.0.0:8080
+          auth: password
+          password: $password
+          cert: false
+          "@ | Out-File -FilePath "$configDir\config.yaml" -Encoding utf8
+          
+          # Install VS Code extensions
+          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension ms-python.python
+          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension dbaeumer.vscode-eslint
+          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension esbenp.prettier-vscode
+          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension bradlc.vscode-tailwindcss
+          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension GitHub.copilot
+          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension GitHub.copilot-chat
+          
+          # Set up GitHub authentication for Copilot
+          $machineDir = "$configDir\Machine"
+          New-Item -ItemType Directory -Force -Path $machineDir | Out-Null
+          @'{ "github-enterprise.uri": "https://github.com" }' | Out-File -FilePath "$machineDir\settings.json" -Encoding utf8
+          
+          # Start code-server in background
+          $codeServerPath = ".\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd"
+          Start-Process -NoNewWindow -FilePath "cmd.exe" -ArgumentList "/c $codeServerPath"
+          
+          # Add code-server info to connection details
+          $publicIp = (Invoke-WebRequest -Uri 'https://api.ipify.org' -UseBasicParsing).Content
+          Write-Host "`n=== code-server ACCESS ==="
+          Write-Host "URL: http://$($env:TAILSCALE_IP):8080"
+          Write-Host "Password: $password"
+          Write-Host "=======================`n"
+
+      - name: Maintain Connection
+        shell: pwsh
+        run: |
+          Write-Host "`n=== RDP ACCESS ==="
+          Write-Host "Address: $env:TAILSCALE_IP"
+          Write-Host "Username: vum"
+          Write-Host "Password: $(echo $env:RDP_CREDS)"
+          Write-Host "==================`n"
+          while ($true) {
+            Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
+            Start-Sleep -Seconds 300
+          }

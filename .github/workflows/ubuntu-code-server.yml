@@ -154,9 +154,15 @@ jobs:
           code-server --install-extension GitHub.copilot
           code-server --install-extension GitHub.copilot-chat
           
+          # Install OpenAI ChatGPT extension
+          code-server --install-extension gencay.vscode-chatgpt
+          
           # Set up GitHub authentication for Copilot
           mkdir -p ~/.config/code-server/Machine
-          echo '{"github-enterprise.uri": "https://github.com"}' > ~/.config/code-server/Machine/settings.json
+          echo '{
+            "github-enterprise.uri": "https://github.com",
+            "chatgpt.gpt3.apiKey": "$OPENAI_API_KEY"
+          }' > ~/.config/code-server/Machine/settings.json
 
       - name: Start code-server
         run: |
