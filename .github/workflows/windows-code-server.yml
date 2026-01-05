@@ -69,12 +69,15 @@ jobs:
           code-server --install-extension esbenp.prettier-vscode
           code-server --install-extension bradlc.vscode-tailwindcss
           
-          # Note: GitHub Copilot is NOT available in code-server (proprietary to VS Code Marketplace)
-          # Install Continue.dev as an open-source AI coding assistant alternative
-          code-server --install-extension continue.continue
+          # Use official VS Code Marketplace instead of Open VSX (enables GitHub Copilot)
+          $env:EXTENSIONS_GALLERY = '{"serviceUrl": "https://marketplace.visualstudio.com/_apis/public/gallery", "cacheUrl": "https://vscode.blob.core.windows.net/gallery/index", "itemUrl": "https://marketplace.visualstudio.com/items"}'
           
-          # Install Codeium as another AI assistant (free tier available)
-          code-server --install-extension codeium.codeium
+          # Install GitHub Copilot (now available via VS Code Marketplace)
+          code-server --install-extension GitHub.copilot
+          code-server --install-extension GitHub.copilot-chat
+          
+          # Install Continue.dev as additional open-source AI coding assistant
+          code-server --install-extension continue.continue
 
       - name: Start code-server
         shell: pwsh
@@ -84,12 +87,18 @@ jobs:
           # Refresh PATH
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
           
+          # Use official VS Code Marketplace instead of Open VSX (enables GitHub Copilot)
+          $env:EXTENSIONS_GALLERY = '{"serviceUrl": "https://marketplace.visualstudio.com/_apis/public/gallery", "cacheUrl": "https://vscode.blob.core.windows.net/gallery/index", "itemUrl": "https://marketplace.visualstudio.com/items"}'
+          
           # Set password for display
           $password = $env:RDP_PASSWORD
           if (-not $password) { $password = "codeserver" }
           
-          # Start code-server in background
-          Start-Job -ScriptBlock { code-server --bind-addr 0.0.0.0:8080 }
+          # Start code-server in background with EXTENSIONS_GALLERY env var
+          Start-Job -ScriptBlock {
+            $env:EXTENSIONS_GALLERY = '{"serviceUrl": "https://marketplace.visualstudio.com/_apis/public/gallery", "cacheUrl": "https://vscode.blob.core.windows.net/gallery/index", "itemUrl": "https://marketplace.visualstudio.com/items"}'
+            code-server --bind-addr 0.0.0.0:8080
+          }
           Start-Sleep -Seconds 5
           
           # Display connection info
