@@ -77,7 +77,11 @@ jobs:
           # Set up GitHub authentication for Copilot
           $machineDir = "$configDir\Machine"
           New-Item -ItemType Directory -Force -Path $machineDir | Out-Null
-          @'{ "github-enterprise.uri": "https://github.com" }' | Out-File -FilePath "$machineDir\settings.json" -Encoding utf8
+          $settings = @{
+            "github-enterprise.uri" = "https://github.com"
+            "chatgpt.gpt3.apiKey" = $env:OPENAI_API_KEY
+          } | ConvertTo-Json
+          $settings | Out-File -FilePath "$machineDir\settings.json" -Encoding utf8
           
           # Start code-server in background
           $codeServerPath = ".\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd"
