@@ -12,6 +12,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Restore VS Code extension cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.USERPROFILE }}\.vscode\extensions
+          key: vscode-ext-${{ runner.os }}-${{ hashFiles('.vscode/extensions.json') }}
+          restore-keys: |
+            vscode-ext-${{ runner.os }}-
+
       - name: Configure Core RDP Settings
         shell: pwsh
         run: .github/workflows/scripts/win-configure-rdp.ps1

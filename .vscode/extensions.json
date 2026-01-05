@@ -1,1 +1,16 @@
-{"recommendations": ["GitHub.copilot", "GitHub.copilot-chat", "ms-python.python", "dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "bradlc.vscode-tailwindcss", "continue.continue"]}
+{
+	"recommendations": [
+		"bradlc.vscode-tailwindcss",
+		"continue.continue",
+		"dbaeumer.vscode-eslint",
+		"esbenp.prettier-vscode",
+		"github.copilot",
+		"github.copilot-chat",
+		"github.vscode-github-actions",
+		"ms-python.debugpy",
+		"ms-python.python",
+		"ms-python.vscode-pylance",
+		"ms-python.vscode-python-envs",
+		"openai.chatgpt"
+	]
+}
