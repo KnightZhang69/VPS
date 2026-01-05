@@ -68,15 +68,13 @@ jobs:
           code-server --install-extension dbaeumer.vscode-eslint
           code-server --install-extension esbenp.prettier-vscode
           code-server --install-extension bradlc.vscode-tailwindcss
-          code-server --install-extension github.copilot
-          code-server --install-extension github.copilot-chat
-          code-server --install-extension genieai.chatgpt-vscode
           
-          # Set up settings for extensions
-          $machineDir = "$configDir\Machine"
-          New-Item -ItemType Directory -Force -Path $machineDir | Out-Null
-          $settings = @{ "github-enterprise.uri" = "https://github.com" }
-          $settings | ConvertTo-Json | Out-File -FilePath "$machineDir\settings.json" -Encoding utf8
+          # Note: GitHub Copilot is NOT available in code-server (proprietary to VS Code Marketplace)
+          # Install Continue.dev as an open-source AI coding assistant alternative
+          code-server --install-extension continue.continue
+          
+          # Install Codeium as another AI assistant (free tier available)
+          code-server --install-extension codeium.codeium
 
       - name: Start code-server
         shell: pwsh
