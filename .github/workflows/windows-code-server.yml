@@ -65,13 +65,14 @@ jobs:
           cert: false
           "@ | Out-File -FilePath "$configDir\config.yaml" -Encoding utf8
           
-          # Install VS Code extensions
+          # Install VS Code extensions (all lowercase)
           .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension ms-python.python
           .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension dbaeumer.vscode-eslint
           .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension esbenp.prettier-vscode
           .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension bradlc.vscode-tailwindcss
-          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension GitHub.copilot
-          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension GitHub.copilot-chat
+          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension github.copilot
+          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension github.copilot-chat
+          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension genieai.chatgpt-vscode
           
           # Set up GitHub authentication for Copilot
           $machineDir = "$configDir\Machine"

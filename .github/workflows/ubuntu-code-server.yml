@@ -150,12 +150,12 @@ jobs:
           code-server --install-extension esbenp.prettier-vscode
           code-server --install-extension bradlc.vscode-tailwindcss
           
-          # Install GitHub Copilot and related extensions
-          code-server --install-extension GitHub.copilot
-          code-server --install-extension GitHub.copilot-chat
+          # Install GitHub Copilot and related extensions (all lowercase)
+          code-server --install-extension github.copilot
+          code-server --install-extension github.copilot-chat
           
           # Install OpenAI ChatGPT extension
-          code-server --install-extension gencay.vscode-chatgpt
+          code-server --install-extension genieai.chatgpt-vscode
           
           # Set up GitHub authentication for Copilot
           mkdir -p ~/.config/code-server/Machine
