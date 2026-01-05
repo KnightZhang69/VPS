@@ -42,15 +42,14 @@ jobs:
 
       - name: Install and Configure code-server
         shell: pwsh
+        env:
+          RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
         run: |
-          # Install code-server
-          $ProgressPreference = 'SilentlyContinue'
-          Invoke-WebRequest -Uri https://github.com/coder/code-server/releases/download/v4.24.0/code-server-4.24.0-windows-amd64.zip -OutFile code-server.zip
-          Expand-Archive -Path code-server.zip -DestinationPath .\code-server -Force
-          Remove-Item code-server.zip
+          # Install code-server via npm (more reliable than direct download)
+          npm install -g code-server
           
           # Create code-server config directory
-          $configDir = "$env:USERPROFILE\AppData\Roaming\code-server"
+          $configDir = "$env:USERPROFILE\.config\code-server"
           New-Item -ItemType Directory -Force -Path $configDir | Out-Null
           
           # Set password
@@ -58,37 +57,29 @@ jobs:
           if (-not $password) { $password = "codeserver" }
           
           # Create config file
-          @"
-          bind-addr: 0.0.0.0:8080
-          auth: password
-          password: $password
-          cert: false
-          "@ | Out-File -FilePath "$configDir\config.yaml" -Encoding utf8
+          $configContent = "bind-addr: 0.0.0.0:8080`nauth: password`npassword: $password`ncert: false"
+          $configContent | Out-File -FilePath "$configDir\config.yaml" -Encoding utf8 -NoNewline
           
-          # Install VS Code extensions (all lowercase)
-          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension ms-python.python
-          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension dbaeumer.vscode-eslint
-          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension esbenp.prettier-vscode
-          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension bradlc.vscode-tailwindcss
-          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension github.copilot
-          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension github.copilot-chat
-          .\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd --install-extension genieai.chatgpt-vscode
+          # Install VS Code extensions
+          code-server --install-extension ms-python.python
+          code-server --install-extension dbaeumer.vscode-eslint
+          code-server --install-extension esbenp.prettier-vscode
+          code-server --install-extension bradlc.vscode-tailwindcss
+          code-server --install-extension github.copilot
+          code-server --install-extension github.copilot-chat
+          code-server --install-extension genieai.chatgpt-vscode
           
-          # Set up GitHub authentication for Copilot
+          # Set up settings for extensions
           $machineDir = "$configDir\Machine"
           New-Item -ItemType Directory -Force -Path $machineDir | Out-Null
-          $settings = @{
-            "github-enterprise.uri" = "https://github.com"
-            "chatgpt.gpt3.apiKey" = $env:OPENAI_API_KEY
-          } | ConvertTo-Json
-          $settings | Out-File -FilePath "$machineDir\settings.json" -Encoding utf8
+          $settings = @{ "github-enterprise.uri" = "https://github.com" }
+          $settings | ConvertTo-Json | Out-File -FilePath "$machineDir\settings.json" -Encoding utf8
           
           # Start code-server in background
-          $codeServerPath = ".\code-server\code-server-4.24.0-windows-amd64\bin\code-server.cmd"
-          Start-Process -NoNewWindow -FilePath "cmd.exe" -ArgumentList "/c $codeServerPath"
+          Start-Process -NoNewWindow -FilePath "code-server" -ArgumentList "--bind-addr", "0.0.0.0:8080"
+          Start-Sleep -Seconds 3
           
-          # Add code-server info to connection details
-          $publicIp = (Invoke-WebRequest -Uri 'https://api.ipify.org' -UseBasicParsing).Content
+          # Display connection info
           Write-Host "`n=== code-server ACCESS ==="
           Write-Host "URL: http://$($env:TAILSCALE_IP):8080"
           Write-Host "Password: $password"
