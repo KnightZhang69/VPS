@@ -40,98 +40,26 @@ jobs:
         shell: pwsh
         run: choco install vscode -y
 
-      - name: Install and Configure code-server
+      - name: Start VS Code Remote Tunnel (Web IDE)
         shell: pwsh
-        env:
-          RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
         run: |
-          # Get latest code-server release version from GitHub API
-          $ProgressPreference = 'SilentlyContinue'
-          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/coder/code-server/releases/latest"
-          $version = $release.tag_name -replace '^v', ''
-          
-          # Find Windows AMD64 asset
-          $asset = $release.assets | Where-Object { $_.name -like "*windows-amd64.zip" } | Select-Object -First 1
-          
-          if (-not $asset) {
-            Write-Host "No Windows build found for v$version, trying v4.95.3..."
-            $version = "4.95.3"
-            $url = "https://github.com/coder/code-server/releases/download/v$version/code-server-$version-windows-amd64.zip"
-          } else {
-            $url = $asset.browser_download_url
+          $codeCmd = "${env:ProgramFiles}\Microsoft VS Code\bin\code.cmd"
+          if (-not (Test-Path $codeCmd)) {
+            throw "VS Code CLI not found at $codeCmd"
           }
-          
-          Write-Host "Downloading code-server v$version from $url..."
-          Invoke-WebRequest -Uri $url -OutFile code-server.zip
-          
-          # Extract to Program Files
-          $installDir = "$env:ProgramFiles\code-server"
-          Expand-Archive -Path code-server.zip -DestinationPath $env:TEMP\code-server-extract -Force
-          New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-          
-          # Find extracted folder (version may vary)
-          $extractedFolder = Get-ChildItem -Path "$env:TEMP\code-server-extract" -Directory | Select-Object -First 1
-          Move-Item -Path "$($extractedFolder.FullName)\*" -Destination $installDir -Force
-          Remove-Item code-server.zip
-          Remove-Item "$env:TEMP\code-server-extract" -Recurse -Force
-          
-          # Add to PATH for this session
-          $env:Path = "$installDir\bin;$env:Path"
-          
-          # Create code-server config directory
-          $configDir = "$env:USERPROFILE\.config\code-server"
-          New-Item -ItemType Directory -Force -Path $configDir | Out-Null
-          
-          # Set password
-          $password = $env:RDP_PASSWORD
-          if (-not $password) { $password = "codeserver" }
-          
-          # Create config file
-          $configContent = "bind-addr: 0.0.0.0:8080`nauth: password`npassword: $password`ncert: false"
-          $configContent | Out-File -FilePath "$configDir\config.yaml" -Encoding utf8 -NoNewline
-          
-          # Use official VS Code Marketplace instead of Open VSX (enables GitHub Copilot)
-          $env:EXTENSIONS_GALLERY = '{"serviceUrl": "https://marketplace.visualstudio.com/_apis/public/gallery", "cacheUrl": "https://vscode.blob.core.windows.net/gallery/index", "itemUrl": "https://marketplace.visualstudio.com/items"}'
-          
-          # Install VS Code extensions
-          & "$installDir\bin\code-server.cmd" --install-extension ms-python.python
-          & "$installDir\bin\code-server.cmd" --install-extension dbaeumer.vscode-eslint
-          & "$installDir\bin\code-server.cmd" --install-extension esbenp.prettier-vscode
-          & "$installDir\bin\code-server.cmd" --install-extension bradlc.vscode-tailwindcss
-          
-          # Install GitHub Copilot (now available via VS Code Marketplace)
-          & "$installDir\bin\code-server.cmd" --install-extension GitHub.copilot
-          & "$installDir\bin\code-server.cmd" --install-extension GitHub.copilot-chat
-          
-          # Install Continue.dev as additional open-source AI coding assistant
-          & "$installDir\bin\code-server.cmd" --install-extension continue.continue
 
-      - name: Start code-server
-        shell: pwsh
-        env:
-          RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
-        run: |
-          # Set install directory
-          $installDir = "$env:ProgramFiles\code-server"
-          $env:Path = "$installDir\bin;$env:Path"
-          
-          # Use official VS Code Marketplace instead of Open VSX (enables GitHub Copilot)
-          $env:EXTENSIONS_GALLERY = '{"serviceUrl": "https://marketplace.visualstudio.com/_apis/public/gallery", "cacheUrl": "https://vscode.blob.core.windows.net/gallery/index", "itemUrl": "https://marketplace.visualstudio.com/items"}'
-          
-          # Set password for display
-          $password = $env:RDP_PASSWORD
-          if (-not $password) { $password = "codeserver" }
-          
-          # Start code-server in background
-          $codeServerCmd = "$installDir\bin\code-server.cmd"
-          Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "set EXTENSIONS_GALLERY={`"serviceUrl`": `"https://marketplace.visualstudio.com/_apis/public/gallery`", `"cacheUrl`": `"https://vscode.blob.core.windows.net/gallery/index`", `"itemUrl`": `"https://marketplace.visualstudio.com/items`"} && `"$codeServerCmd`" --bind-addr 0.0.0.0:8080" -WindowStyle Hidden
-          Start-Sleep -Seconds 5
-          
-          # Display connection info
-          Write-Host "`n=== code-server ACCESS ==="
-          Write-Host "URL: http://$($env:TAILSCALE_IP):8080"
-          Write-Host "Password: $password"
-          Write-Host "=======================`n"
+          $tunnelName = "gh-${env:GITHUB_RUN_ID}"
+          Write-Host "Starting VS Code Remote Tunnel: $tunnelName"
+          Write-Host "If prompted, complete device login in the workflow logs to activate the tunnel."
+
+          Start-Process -NoNewWindow -FilePath $codeCmd -ArgumentList @(
+            "tunnel",
+            "--accept-server-license-terms",
+            "--name",
+            $tunnelName
+          )
+
+          Write-Host "Web IDE URL (after auth): https://vscode.dev/tunnel/$tunnelName"
 
       - name: Maintain Connection
         shell: pwsh
